@@ -45,8 +45,6 @@ import io.openim.android.ouiconversation.databinding.LayoutMsgImgLeftBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgImgRightBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgTxtLeftBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgTxtRightBinding;
-import io.openim.android.ouiconversation.databinding.LayoutMsgVoiceLeftBinding;
-import io.openim.android.ouiconversation.databinding.LayoutMsgVoiceRightBinding;
 import io.openim.android.ouiconversation.ui.ChatActivity;
 import io.openim.android.ouiconversation.ui.PreviewMediaActivity;
 import io.openim.android.ouiconversation.vm.CustomEmojiVM;
@@ -412,7 +410,7 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder
+     * 语音消息 ViewHolder - 使用 findViewById 避免 Data Binding 问题
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
         // 当前正在播放的语音消息 ID
@@ -434,26 +432,46 @@ public class MessageViewHolder {
 
         @Override
         protected void bindLeft(View itemView, Message message) {
-            LayoutMsgVoiceLeftBinding v = LayoutMsgVoiceLeftBinding.bind(itemView);
-            v.avatar.load(message.getSenderFaceUrl(), message.getSenderNickname());
-            v.sendState.setSendState(message.getStatus());
+            AvatarImage avatar = itemView.findViewById(R.id.avatar);
+            SendStateView sendState = itemView.findViewById(R.id.sendState);
+            View voiceContainer = itemView.findViewById(R.id.voiceContainer);
+            ImageView voiceIcon = itemView.findViewById(R.id.voiceIcon);
+            TextView voiceDuration = itemView.findViewById(R.id.voiceDuration);
+            View unreadDot = itemView.findViewById(R.id.unreadDot);
             
-            bindVoiceData(v.voiceContainer, v.voiceIcon, v.voiceDuration, v.unreadDot, message, false);
+            if (avatar != null) {
+                avatar.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            }
+            if (sendState != null) {
+                sendState.setSendState(message.getStatus());
+            }
+            
+            bindVoiceData(voiceContainer, voiceIcon, voiceDuration, unreadDot, message, false);
         }
 
         @Override
         protected void bindRight(View itemView, Message message) {
-            LayoutMsgVoiceRightBinding v = LayoutMsgVoiceRightBinding.bind(itemView);
-            v.avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
-            v.sendState2.setSendState(message.getStatus());
+            AvatarImage avatar2 = itemView.findViewById(R.id.avatar2);
+            SendStateView sendState2 = itemView.findViewById(R.id.sendState2);
+            View voiceContainer2 = itemView.findViewById(R.id.voiceContainer2);
+            ImageView voiceIcon2 = itemView.findViewById(R.id.voiceIcon2);
+            TextView voiceDuration2 = itemView.findViewById(R.id.voiceDuration2);
             
-            bindVoiceData(v.voiceContainer2, v.voiceIcon2, v.voiceDuration2, null, message, true);
+            if (avatar2 != null) {
+                avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            }
+            if (sendState2 != null) {
+                sendState2.setSendState(message.getStatus());
+            }
+            
+            bindVoiceData(voiceContainer2, voiceIcon2, voiceDuration2, null, message, true);
         }
         
         private void bindVoiceData(View container, ImageView voiceIcon, TextView durationText, 
                                    View unreadDot, Message message, boolean isSelf) {
             SoundElem soundElem = message.getSoundElem();
             if (soundElem == null) return;
+            if (container == null || voiceIcon == null || durationText == null) return;
             
             // 设置时长显示
             int duration = soundElem.getDuration();
@@ -466,7 +484,11 @@ public class MessageViewHolder {
             if (width > maxWidth) width = maxWidth;
             
             ViewGroup.LayoutParams params = container.getLayoutParams();
-            params.width = width;
+            if (params == null) {
+                params = new ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+            } else {
+                params.width = width;
+            }
             container.setLayoutParams(params);
             
             // 未读标记（只显示在接收的语音消息上）
