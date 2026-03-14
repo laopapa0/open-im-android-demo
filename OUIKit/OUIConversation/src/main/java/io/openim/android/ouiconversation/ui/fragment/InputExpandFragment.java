@@ -249,9 +249,9 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             return;
         }
         
-        // 使用 createSoundMessage API (OpenIM SDK 标准方法)
+        // 使用 createSoundMessageFromFullPath API (OpenIM SDK 标准方法)
         Message voiceMsg = OpenIMClient.getInstance().messageManager
-            .createSoundMessage(recordedFilePath, (int) recordedDuration);
+            .createSoundMessageFromFullPath(recordedFilePath, (int) recordedDuration);
         
         if (voiceMsg != null && vm != null) {
             vm.sendMsg(voiceMsg);
