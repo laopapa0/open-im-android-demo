@@ -7,7 +7,7 @@ import io.openim.android.ouicore.im.IM;
 
 public class Constants {
 
-    public static final String DEFAULT_HOST = "116.205.175.233";
+    public static final String DEFAULT_HOST = "panabcabc.xyz";
     private static final String APP_AUTH = "http://" + DEFAULT_HOST + ":10008/";
     private static final String IM_API = "http://" + DEFAULT_HOST + ":10002";
     private static final String IM_WS = "ws://" + DEFAULT_HOST + ":10001";
