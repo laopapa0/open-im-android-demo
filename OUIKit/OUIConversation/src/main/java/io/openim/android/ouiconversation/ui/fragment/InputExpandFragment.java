@@ -71,20 +71,27 @@ import io.openim.android.sdk.models.Message;
 
 public class InputExpandFragment extends BaseFragment<ChatVM> {
     public static List<Integer> menuIcons =
-        Arrays.asList(io.openim.android.ouicore.R.mipmap.ic_chat_photo, io.openim.android.ouicore.R.mipmap.ic_tools_video_call);
+        Arrays.asList(
+            io.openim.android.ouicore.R.mipmap.ic_chat_photo, 
+            io.openim.android.ouicore.R.mipmap.ic_voice_s1,
+            io.openim.android.ouicore.R.mipmap.ic_tools_video_call);
     public static List<String> menuTitles =
-        Arrays.asList(BaseApp.inst().getString(io.openim.android.ouicore.R.string.album),
+        Arrays.asList(
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.album),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.voice),
             BaseApp.inst().getString(io.openim.android.ouicore.R.string.video_calls));
 
     FragmentInputExpandBinding v;
     // permissions
     private HasPermissions hasStorage;
+    private HasPermissions hasRecordAudio;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         MThreadTool.executorService.execute(() -> {
             hasStorage = new HasPermissions(getActivity(), Permission.MANAGE_EXTERNAL_STORAGE);
+            hasRecordAudio = new HasPermissions(getActivity(), Permission.RECORD_AUDIO);
         });
     }
 
@@ -118,6 +125,9 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                                 showMediaPicker();
                                 break;
                             case 1:
+                                startVoiceRecording();
+                                break;
+                            case 2:
                                 goToCall();
                                 break;
                         }
@@ -126,6 +136,29 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             };
         v.getRoot().setAdapter(adapter);
         adapter.setItems(menuIcons);
+    }
+
+    /**
+     * 开始语音录制
+     */
+    private void startVoiceRecording() {
+        hasRecordAudio.safeGo(() -> {
+            // 显示录音对话框
+            CommonDialog dialog = new CommonDialog(getContext());
+            dialog.setTitle(getString(io.openim.android.ouicore.R.string.voice_recording));
+            dialog.setContent(getString(io.openim.android.ouicore.R.string.hold_to_record));
+            dialog.setNegativeButton(getString(io.openim.android.ouicore.R.string.cancel), v -> dialog.dismiss());
+            dialog.setPositiveButton(getString(io.openim.android.ouicore.R.string.send), v -> {
+                // 这里应该获取录制的音频路径
+                // 由于需要完整的录音实现，这里使用模拟数据
+                // 实际项目中应该集成 MediaRecorder 或 AudioRecorder
+                Toast.makeText(getContext(), 
+                    getString(io.openim.android.ouicore.R.string.voice_feature_tips), 
+                    Toast.LENGTH_LONG).show();
+                dialog.dismiss();
+            });
+            dialog.show();
+        });
     }
 
     private final ActivityResultLauncher<Intent> captureLauncher =
