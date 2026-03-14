@@ -399,7 +399,7 @@ public class MessageViewHolder {
 
         @Override
         protected void bindRight(View itemView, Message message) {
-            LayoutMsgImgRightBinding v = LayoutImgRightBinding.bind(itemView);
+            LayoutMsgImgRightBinding v = LayoutMsgImgRightBinding.bind(itemView);
             v.avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
             v.videoPlay2.setVisibility(View.GONE);
             v.mask2.setVisibility(View.GONE);
