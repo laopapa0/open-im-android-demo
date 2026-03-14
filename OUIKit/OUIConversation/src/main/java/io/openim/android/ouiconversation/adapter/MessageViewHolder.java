@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
+import android.media.MediaPlayer;
 import android.text.Spannable;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
@@ -36,6 +37,7 @@ import com.alibaba.android.arouter.launcher.ARouter;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -415,11 +417,12 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder - 使用 findViewById 避免 Data Binding 问题
+     * 语音消息 ViewHolder - 使用系统 MediaPlayer 实现
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
-        // 当前正在播放的语音消息 ID
         private static String currentPlayingMsgId = null;
+        private static MediaPlayer mediaPlayer = null;
+        private static ImageView currentVoiceIcon = null;
         
         public VOICEView(ViewGroup itemView) {
             super(itemView);
@@ -474,22 +477,20 @@ public class MessageViewHolder {
         
         private void bindVoiceData(View container, ImageView voiceIcon, TextView durationText, 
                                    View unreadDot, Message message, boolean isSelf) {
+            if (container == null || voiceIcon == null || durationText == null) return;
+            
             SoundElem soundElem = message.getSoundElem();
             if (soundElem == null) {
-                Log.w(TAG, "SoundElem is null");
-                return;
-            }
-            if (container == null || voiceIcon == null || durationText == null) {
-                Log.w(TAG, "Voice views are null");
+                durationText.setText("0\"");
                 return;
             }
             
-            // 设置时长显示 - getDuration() 返回 long，需要转换为 int
+            // 设置时长显示
             long durationLong = soundElem.getDuration();
             int duration = (int) durationLong;
             durationText.setText(duration + "\"");
             
-            // 设置语音容器宽度（根据时长）
+            // 设置语音容器宽度
             int minWidth = Common.dp2px(80);
             int maxWidth = Common.dp2px(200);
             int width = minWidth + (duration * Common.dp2px(5));
@@ -503,139 +504,101 @@ public class MessageViewHolder {
             }
             container.setLayoutParams(params);
             
-            // 未读标记（只显示在接收的语音消息上）
+            // 未读标记
             if (unreadDot != null) {
-                boolean isRead = message.isRead() || message.getAttachedInfoElem() != null 
-                    && message.getAttachedInfoElem().getHasReadTime() > 0;
+                boolean isRead = message.isRead();
                 unreadDot.setVisibility(isRead ? View.GONE : View.VISIBLE);
             }
             
-            // 点击播放语音
+            // 点击播放
             container.setOnClickListener(v -> {
-                playVoice(message, voiceIcon, isSelf, container.getContext());
+                playVoice(message, voiceIcon, isSelf);
             });
         }
         
-        /**
-         * 播放语音
-         */
-        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, android.content.Context context) {
+        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf) {
             try {
-                Log.d(TAG, "playVoice called");
-                
-                SoundElem soundElem = message.getSoundElem();
-                if (soundElem == null) {
-                    Log.e(TAG, "SoundElem is null");
-                    Toast.makeText(context, "语音数据为空", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                
-                // 获取语音URL - 优先使用本地路径，如果没有则使用网络URL
-                String voiceUrl = soundElem.getSourceUrl();
-                String soundPath = soundElem.getSoundPath();
-                
-                Log.d(TAG, "SourceUrl: " + voiceUrl);
-                Log.d(TAG, "SoundPath: " + soundPath);
-                
-                // 优先使用本地路径
-                String finalPath = null;
-                if (soundPath != null && !soundPath.isEmpty()) {
-                    File localFile = new File(soundPath);
-                    if (localFile.exists()) {
-                        finalPath = soundPath;
-                        Log.d(TAG, "Using local file: " + soundPath);
-                    }
-                }
-                
-                // 如果没有本地文件，尝试使用 URL
-                if (finalPath == null && voiceUrl != null && !voiceUrl.isEmpty()) {
-                    finalPath = voiceUrl;
-                    Log.d(TAG, "Using URL: " + voiceUrl);
-                }
-                
-                if (finalPath == null || finalPath.isEmpty()) {
-                    Log.e(TAG, "No valid voice path found");
-                    Toast.makeText(context, "语音文件路径为空", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                
                 String msgId = message.getClientMsgID();
-                if (msgId == null) {
-                    Log.e(TAG, "Message ID is null");
-                    return;
-                }
+                if (msgId == null) return;
                 
                 // 如果正在播放当前语音，则停止
                 if (msgId.equals(currentPlayingMsgId)) {
-                    Log.d(TAG, "Stopping current playback");
-                    SPlayer.instance().stop();
-                    currentPlayingMsgId = null;
-                    stopVoiceAnimation(voiceIcon);
+                    stopPlayback();
                     return;
                 }
                 
                 // 停止之前的播放
-                Log.d(TAG, "Stopping previous playback");
-                SPlayer.instance().stop();
-                currentPlayingMsgId = msgId;
+                stopPlayback();
                 
-                // 开始播放动画
-                startVoiceAnimation(voiceIcon);
+                SoundElem soundElem = message.getSoundElem();
+                if (soundElem == null) return;
+                
+                // 获取语音路径
+                String voicePath = soundElem.getSoundPath();
+                if (voicePath == null || voicePath.isEmpty()) {
+                    voicePath = soundElem.getSourceUrl();
+                }
+                
+                if (voicePath == null || voicePath.isEmpty()) {
+                    Toast.makeText(voiceIcon.getContext(), "语音路径为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 
                 // 标记已读
                 if (!isSelf && chatVM != null) {
                     chatVM.markRead(message);
                 }
                 
-                // 播放语音
-                Log.d(TAG, "Starting playback: " + finalPath);
-                SPlayer.instance().playByUrl(finalPath, new PlayerListener() {
-                    @Override
-                    public void Loading(SMediaPlayer mediaPlayer, int i) {
-                        Log.d(TAG, "Loading...");
-                    }
-
-                    @Override
-                    public void LoadSuccess(SMediaPlayer mediaPlayer) {
-                        Log.d(TAG, "LoadSuccess, starting...");
-                        mediaPlayer.start();
-                    }
-
-                    @Override
-                    public void onCompletion(SMediaPlayer mediaPlayer) {
-                        Log.d(TAG, "Playback completed");
-                        currentPlayingMsgId = null;
-                        stopVoiceAnimation(voiceIcon);
-                    }
-
-                    @Override
-                    public void onError(Exception e) {
-                        Log.e(TAG, "Playback error: " + (e != null ? e.getMessage() : "unknown"));
-                        currentPlayingMsgId = null;
-                        stopVoiceAnimation(voiceIcon);
-                        if (context != null) {
-                            Toast.makeText(context, "播放失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
+                // 使用系统 MediaPlayer
+                currentPlayingMsgId = msgId;
+                currentVoiceIcon = voiceIcon;
+                startVoiceAnimation(voiceIcon);
+                
+                mediaPlayer = new MediaPlayer();
+                mediaPlayer.setDataSource(voicePath);
+                mediaPlayer.prepareAsync();
+                
+                mediaPlayer.setOnPreparedListener(mp -> {
+                    mp.start();
                 });
+                
+                mediaPlayer.setOnCompletionListener(mp -> {
+                    stopPlayback();
+                });
+                
+                mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                    stopPlayback();
+                    return true;
+                });
+                
             } catch (Exception e) {
-                Log.e(TAG, "Exception in playVoice: " + e.getMessage(), e);
-                if (context != null) {
-                    Toast.makeText(context, "播放异常: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                }
+                e.printStackTrace();
+                stopPlayback();
+                Toast.makeText(voiceIcon.getContext(), "播放失败", Toast.LENGTH_SHORT).show();
             }
         }
         
-        /**
-         * 开始语音播放动画
-         */
+        private void stopPlayback() {
+            currentPlayingMsgId = null;
+            if (currentVoiceIcon != null) {
+                stopVoiceAnimation(currentVoiceIcon);
+                currentVoiceIcon = null;
+            }
+            if (mediaPlayer != null) {
+                try {
+                    mediaPlayer.stop();
+                    mediaPlayer.release();
+                } catch (Exception e) {
+                    // ignore
+                }
+                mediaPlayer = null;
+            }
+        }
+        
         private void startVoiceAnimation(ImageView voiceIcon) {
             voiceIcon.setAlpha(0.5f);
         }
         
-        /**
-         * 停止语音播放动画
-         */
         private void stopVoiceAnimation(ImageView voiceIcon) {
             voiceIcon.setAlpha(1.0f);
         }
