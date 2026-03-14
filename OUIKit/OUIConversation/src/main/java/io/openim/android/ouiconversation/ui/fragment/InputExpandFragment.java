@@ -82,7 +82,7 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
     private TextView recordDurationText;
     private boolean isRecording = false;
     private String recordedFilePath;
-    private int recordedDuration;
+    private long recordedDuration;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -168,7 +168,7 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                 }
 
                 @Override
-                public void onComplete(String filePath, int duration) {
+                public void onComplete(String filePath, long duration) {
                     isRecording = false;
                     recordedFilePath = filePath;
                     recordedDuration = duration;
@@ -249,8 +249,9 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             return;
         }
         
+        // 使用 createVoiceMessage API (根据 OpenIM SDK 标准方法)
         Message voiceMsg = OpenIMClient.getInstance().messageManager
-            .createVoiceMessageFromFullPath(recordedFilePath, recordedDuration);
+            .createVoiceMessage(recordedFilePath, (int) recordedDuration);
         
         if (voiceMsg != null && vm != null) {
             vm.sendMsg(voiceMsg);
