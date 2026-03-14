@@ -4,10 +4,9 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
-import android.os.Build;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -32,6 +31,7 @@ public class VoiceRecorder {
     private boolean isRecording = false;
     private Context context;
     private Handler mainHandler;
+    private Runnable progressRunnable;
     
     // 录音状态回调
     public interface RecordListener {
@@ -126,6 +126,7 @@ public class VoiceRecorder {
             mediaRecorder = null;
             
             isRecording = false;
+            stopProgressUpdate();
             
             // 检查录音时长
             if (duration < MIN_RECORD_DURATION) {
@@ -163,6 +164,7 @@ public class VoiceRecorder {
             mediaRecorder = null;
             
             isRecording = false;
+            stopProgressUpdate();
             
             // 删除录音文件
             deleteCurrentFile();
@@ -194,11 +196,7 @@ public class VoiceRecorder {
     }
     
     private void startProgressUpdate() {
-        if (!isRecording) {
-            return;
-        }
-        
-        mainHandler.postDelayed(new Runnable() {
+        progressRunnable = new Runnable() {
             @Override
             public void run() {
                 if (isRecording && listener != null) {
@@ -207,7 +205,15 @@ public class VoiceRecorder {
                     mainHandler.postDelayed(this, 1000);
                 }
             }
-        }, 1000);
+        };
+        mainHandler.postDelayed(progressRunnable, 1000);
+    }
+    
+    private void stopProgressUpdate() {
+        if (progressRunnable != null) {
+            mainHandler.removeCallbacks(progressRunnable);
+            progressRunnable = null;
+        }
     }
     
     private void deleteCurrentFile() {
@@ -221,6 +227,7 @@ public class VoiceRecorder {
     
     private void reset() {
         isRecording = false;
+        stopProgressUpdate();
         if (mediaRecorder != null) {
             try {
                 mediaRecorder.release();
