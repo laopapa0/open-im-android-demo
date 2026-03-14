@@ -15,6 +15,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewStub;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -43,6 +45,8 @@ import io.openim.android.ouiconversation.databinding.LayoutMsgImgLeftBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgImgRightBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgTxtLeftBinding;
 import io.openim.android.ouiconversation.databinding.LayoutMsgTxtRightBinding;
+import io.openim.android.ouiconversation.databinding.LayoutMsgVoiceLeftBinding;
+import io.openim.android.ouiconversation.databinding.LayoutMsgVoiceRightBinding;
 import io.openim.android.ouiconversation.ui.ChatActivity;
 import io.openim.android.ouiconversation.ui.PreviewMediaActivity;
 import io.openim.android.ouiconversation.vm.CustomEmojiVM;
@@ -83,6 +87,7 @@ import io.openim.android.sdk.models.CardElem;
 import io.openim.android.sdk.models.MergeElem;
 import io.openim.android.sdk.models.Message;
 import io.openim.android.sdk.models.QuoteElem;
+import io.openim.android.sdk.models.SoundElem;
 import io.openim.android.sdk.models.VideoElem;
 import io.reactivex.exceptions.UndeliverableException;
 import io.reactivex.observers.DisposableObserver;
@@ -93,6 +98,7 @@ public class MessageViewHolder {
                                                            int viewType) {
         if (viewType == Constants.LOADING) return new LoadingView(parent);
         if (viewType == MessageType.PICTURE) return new IMGView(parent);
+        if (viewType == MessageType.VOICE) return new VOICEView(parent);
         return new TXTView(parent);
     }
 
@@ -403,5 +409,151 @@ public class MessageViewHolder {
             toPreview(v.content2, url, null);
         }
 
+    }
+
+    /**
+     * 语音消息 ViewHolder
+     */
+    public static class VOICEView extends MessageViewHolder.MsgViewHolder {
+        // 当前正在播放的语音消息 ID
+        private static String currentPlayingMsgId = null;
+        
+        public VOICEView(ViewGroup itemView) {
+            super(itemView);
+        }
+
+        @Override
+        protected int getLeftInflatedId() {
+            return R.layout.layout_msg_voice_left;
+        }
+
+        @Override
+        protected int getRightInflatedId() {
+            return R.layout.layout_msg_voice_right;
+        }
+
+        @Override
+        protected void bindLeft(View itemView, Message message) {
+            LayoutMsgVoiceLeftBinding v = LayoutMsgVoiceLeftBinding.bind(itemView);
+            v.avatar.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            v.sendState.setSendState(message.getStatus());
+            
+            bindVoiceData(v.voiceContainer, v.voiceIcon, v.voiceDuration, v.unreadDot, message, false);
+        }
+
+        @Override
+        protected void bindRight(View itemView, Message message) {
+            LayoutMsgVoiceRightBinding v = LayoutMsgVoiceRightBinding.bind(itemView);
+            v.avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            v.sendState2.setSendState(message.getStatus());
+            
+            bindVoiceData(v.voiceContainer2, v.voiceIcon2, v.voiceDuration2, null, message, true);
+        }
+        
+        private void bindVoiceData(View container, ImageView voiceIcon, TextView durationText, 
+                                   View unreadDot, Message message, boolean isSelf) {
+            SoundElem soundElem = message.getSoundElem();
+            if (soundElem == null) return;
+            
+            // 设置时长显示
+            int duration = soundElem.getDuration();
+            durationText.setText(duration + "\"");
+            
+            // 设置语音容器宽度（根据时长）
+            int minWidth = Common.dp2px(80);
+            int maxWidth = Common.dp2px(200);
+            int width = minWidth + (duration * Common.dp2px(5));
+            if (width > maxWidth) width = maxWidth;
+            
+            ViewGroup.LayoutParams params = container.getLayoutParams();
+            params.width = width;
+            container.setLayoutParams(params);
+            
+            // 未读标记（只显示在接收的语音消息上）
+            if (unreadDot != null) {
+                boolean isRead = message.isRead() || message.getAttachedInfoElem() != null 
+                    && message.getAttachedInfoElem().getHasReadTime() > 0;
+                unreadDot.setVisibility(isRead ? View.GONE : View.VISIBLE);
+            }
+            
+            // 点击播放语音
+            container.setOnClickListener(v -> {
+                playVoice(message, voiceIcon, isSelf);
+            });
+        }
+        
+        /**
+         * 播放语音
+         */
+        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf) {
+            SoundElem soundElem = message.getSoundElem();
+            if (soundElem == null) return;
+            
+            String voiceUrl = soundElem.getSourceUrl();
+            String msgId = message.getClientMsgID();
+            
+            // 如果正在播放当前语音，则停止
+            if (msgId.equals(currentPlayingMsgId)) {
+                SPlayer.instance().stop();
+                currentPlayingMsgId = null;
+                stopVoiceAnimation(voiceIcon);
+                return;
+            }
+            
+            // 停止之前的播放
+            SPlayer.instance().stop();
+            currentPlayingMsgId = msgId;
+            
+            // 开始播放动画
+            startVoiceAnimation(voiceIcon);
+            
+            // 标记已读
+            if (!isSelf && chatVM != null) {
+                chatVM.markRead(message);
+            }
+            
+            // 播放语音
+            SPlayer.instance().playByUrl(voiceUrl, new PlayerListener() {
+                @Override
+                public void Loading(SMediaPlayer mediaPlayer, int i) {
+                    // 加载中
+                }
+
+                @Override
+                public void LoadSuccess(SMediaPlayer mediaPlayer) {
+                    mediaPlayer.start();
+                }
+
+                @Override
+                public void onCompletion(SMediaPlayer mediaPlayer) {
+                    // 播放完成
+                    currentPlayingMsgId = null;
+                    stopVoiceAnimation(voiceIcon);
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    // 播放错误
+                    currentPlayingMsgId = null;
+                    stopVoiceAnimation(voiceIcon);
+                }
+            });
+        }
+        
+        /**
+         * 开始语音播放动画
+         */
+        private void startVoiceAnimation(ImageView voiceIcon) {
+            // 这里可以使用帧动画或属性动画来实现音波动画
+            // 简化实现：使用透明度变化模拟
+            voiceIcon.setAlpha(0.5f);
+        }
+        
+        /**
+         * 停止语音播放动画
+         */
+        private void stopVoiceAnimation(ImageView voiceIcon) {
+            voiceIcon.setAlpha(1.0f);
+        }
     }
 }
