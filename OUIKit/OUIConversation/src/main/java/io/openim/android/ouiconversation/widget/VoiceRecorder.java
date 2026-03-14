@@ -19,7 +19,7 @@ public class VoiceRecorder {
     public interface RecordListener {
         void onStart();
         void onProgress(int seconds);
-        void onComplete(String filePath, int duration);
+        void onComplete(String filePath, long duration);
         void onError(String error);
         void onCancel();
     }
@@ -103,7 +103,7 @@ public class VoiceRecorder {
         mainHandler.removeCallbacks(progressUpdater);
         
         long duration = System.currentTimeMillis() - startTime;
-        int durationSeconds = (int) (duration / 1000);
+        long durationSeconds = duration / 1000;
         
         if (durationSeconds < MIN_RECORD_DURATION) {
             // 录音时间太短
