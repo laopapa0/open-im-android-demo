@@ -427,7 +427,7 @@ public class MessageViewHolder {
 
         @Override
         protected int getRightInflatedId() {
-            return R.layout.layout_msg_voice_right;
+            return R.layout.layout_msg_msg_voice_right;
         }
 
         @Override
@@ -473,8 +473,9 @@ public class MessageViewHolder {
             if (soundElem == null) return;
             if (container == null || voiceIcon == null || durationText == null) return;
             
-            // 设置时长显示
-            int duration = soundElem.getDuration();
+            // 设置时长显示 - getDuration() 返回 long，需要转换为 int
+            long durationLong = soundElem.getDuration();
+            int duration = (int) durationLong;
             durationText.setText(duration + "\"");
             
             // 设置语音容器宽度（根据时长）
