@@ -25,6 +25,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.content.res.AppCompatResources;
@@ -34,8 +35,10 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.hjq.permissions.Permission;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import io.openim.android.ouiconversation.R;
 import io.openim.android.ouiconversation.databinding.LayoutInputCoteBinding;
@@ -71,6 +74,12 @@ public class BottomInputCote {
     private boolean isSend;
 
     private OnDedrepClickListener chatMoreOrSendClick;
+    
+    // 语音录制相关
+    private boolean isVoiceMode = false;
+    private VoiceRecorder voiceRecorder;
+    private String recordedFilePath;
+    private long recordedDuration;
 
     public BottomInputCote(Context context, LayoutInputCoteBinding view) {
         this.context = context;
@@ -138,13 +147,23 @@ public class BottomInputCote {
         view.fragmentContainer.setOnFocusChangeListener((v, hasFocus) -> {
             if (!hasFocus) setExpandHide(true);
         });
-//        view.chatInput.getViewTreeObserver().addOnDrawListener(() -> {
-//            Editable inputContent = view.chatInput.getEditableText();
-//            Object[] atSpan = inputContent.getSpans(0, view.chatInput.getSelectionEnd(), Object.class);
-////            if (atSpan.length > 0) {
-////                view.chatInput.setSelection(atSpan[atSpan.length - 1].);
-////            }
-//        });
+        
+        // 语音按钮点击事件
+        view.voiceBtn.setOnClickListener(v -> toggleVoiceMode());
+        
+        // 按住说话按钮触摸事件
+        view.btnRecordVoice.setOnTouchListener((v, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    startVoiceRecord();
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    stopVoiceRecord();
+                    return true;
+            }
+            return false;
+        });
     }
 
     private void initView(LayoutInputCoteBinding view) {
@@ -154,6 +173,103 @@ public class BottomInputCote {
         view.chatInput.setInputType(InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         view.chatInput.setSingleLine(false);
         view.chatInput.setMaxLines(4);
+    }
+    
+    /**
+     * 切换语音/键盘模式
+     */
+    private void toggleVoiceMode() {
+        isVoiceMode = !isVoiceMode;
+        if (isVoiceMode) {
+            // 切换到语音模式
+            clearFocus();
+            Common.hideKeyboard(context, view.chatInput);
+            view.chatInput.setVisibility(GONE);
+            view.btnRecordVoice.setVisibility(VISIBLE);
+            view.voiceBtn.setImageResource(R.mipmap.ic_chat_keyboard); // 需要添加键盘图标
+            setExpandHide(true);
+        } else {
+            // 切换到键盘模式
+            view.chatInput.setVisibility(VISIBLE);
+            view.btnRecordVoice.setVisibility(GONE);
+            view.voiceBtn.setImageResource(R.mipmap.ic_voice_s1);
+            view.chatInput.requestFocus();
+            Common.pushKeyboard((BaseActivity) context);
+        }
+    }
+    
+    /**
+     * 开始录音
+     */
+    private void startVoiceRecord() {
+        HasPermissions hasRecordAudio = new HasPermissions((BaseActivity) context, Permission.RECORD_AUDIO);
+        hasRecordAudio.safeGo(() -> {
+            if (voiceRecorder == null) {
+                voiceRecorder = new VoiceRecorder(context);
+                voiceRecorder.setRecordListener(new VoiceRecorder.RecordListener() {
+                    @Override
+                    public void onStart() {
+                        view.btnRecordVoice.setText("松开 结束");
+                    }
+
+                    @Override
+                    public void onProgress(int seconds) {
+                        // 更新录音时长显示
+                    }
+
+                    @Override
+                    public void onComplete(String filePath, long duration) {
+                        recordedFilePath = filePath;
+                        recordedDuration = duration;
+                        sendVoiceMessage();
+                        view.btnRecordVoice.setText("按住 说话");
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show();
+                        view.btnRecordVoice.setText("按住 说话");
+                    }
+
+                    @Override
+                    public void onCancel() {
+                        view.btnRecordVoice.setText("按住 说话");
+                    }
+                });
+            }
+            voiceRecorder.startRecording();
+        });
+    }
+    
+    /**
+     * 停止录音
+     */
+    private void stopVoiceRecord() {
+        if (voiceRecorder != null && voiceRecorder.isRecording()) {
+            voiceRecorder.stopRecording();
+        }
+    }
+    
+    /**
+     * 发送语音消息
+     */
+    private void sendVoiceMessage() {
+        if (recordedFilePath == null || recordedFilePath.isEmpty()) {
+            return;
+        }
+        
+        File voiceFile = new File(recordedFilePath);
+        if (!voiceFile.exists()) {
+            Toast.makeText(context, "录音文件不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        Message voiceMsg = OpenIMClient.getInstance().messageManager
+            .createSoundMessageFromFullPath(recordedFilePath, (int) recordedDuration);
+        
+        if (voiceMsg != null && vm != null) {
+            vm.sendMsg(voiceMsg);
+        }
     }
 
     private void setSendButton(boolean isSend) {
