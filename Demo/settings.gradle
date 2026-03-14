@@ -42,6 +42,8 @@ include ':app'
 
 include ':OUICore'
 project(':OUICore').projectDir = new File(settingsDir, '../OUIKit/OUICore')
+include ':OUIRecordLib'
+project(':OUIRecordLib').projectDir = new File(settingsDir, '../OUIKit/OUIRecordLib')
 include ':OUIConversation'
 project(':OUIConversation').projectDir = new File(settingsDir, '../OUIKit/OUIConversation')
 include ':OUIGroup'
