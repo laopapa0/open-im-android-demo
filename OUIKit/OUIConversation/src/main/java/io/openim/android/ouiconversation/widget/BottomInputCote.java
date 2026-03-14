@@ -148,7 +148,7 @@ public class BottomInputCote {
             if (!hasFocus) setExpandHide(true);
         });
         
-        // 语音按钮点击事件
+        // 语音按钮点击事件 - 参考 Flutter demo 实现
         view.voiceBtn.setOnClickListener(v -> toggleVoiceMode());
         
         // 按住说话按钮触摸事件
@@ -173,26 +173,29 @@ public class BottomInputCote {
         view.chatInput.setInputType(InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         view.chatInput.setSingleLine(false);
         view.chatInput.setMaxLines(4);
+        
+        // 初始化语音按钮图标 - 使用 Flutter demo 的图标
+        view.voiceBtn.setImageResource(R.mipmap.ic_open_voice);
     }
     
     /**
-     * 切换语音/键盘模式
+     * 切换语音/键盘模式 - 参考 Flutter demo 逻辑
      */
     private void toggleVoiceMode() {
         isVoiceMode = !isVoiceMode;
         if (isVoiceMode) {
-            // 切换到语音模式
+            // 切换到语音模式 - 显示键盘图标，隐藏输入框，显示按住说话按钮
             clearFocus();
             Common.hideKeyboard(context, view.chatInput);
             view.chatInput.setVisibility(GONE);
             view.btnRecordVoice.setVisibility(VISIBLE);
-            view.voiceBtn.setImageResource(R.mipmap.ic_chat_keyboard); // 需要添加键盘图标
+            view.voiceBtn.setImageResource(R.mipmap.ic_open_keyboard);
             setExpandHide(true);
         } else {
-            // 切换到键盘模式
+            // 切换到键盘模式 - 显示语音图标，显示输入框，隐藏按住说话按钮
             view.chatInput.setVisibility(VISIBLE);
             view.btnRecordVoice.setVisibility(GONE);
-            view.voiceBtn.setImageResource(R.mipmap.ic_voice_s1);
+            view.voiceBtn.setImageResource(R.mipmap.ic_open_voice);
             view.chatInput.requestFocus();
             Common.pushKeyboard((BaseActivity) context);
         }
