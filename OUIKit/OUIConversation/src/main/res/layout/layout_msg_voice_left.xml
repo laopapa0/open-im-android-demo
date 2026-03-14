@@ -1,76 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical">
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp">
 
     <io.openim.android.ouicore.widget.AvatarImage
         android:id="@+id/avatar"
         android:layout_width="40dp"
         android:layout_height="40dp"
-        android:layout_marginStart="16dp" />
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true" />
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/nickName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
         android:layout_marginStart="8dp"
-        android:orientation="vertical">
+        android:layout_toEndOf="@id/avatar"
+        android:textColor="#999999"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/voiceContainer"
+        android:layout_width="80dp"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/nickName"
+        android:layout_marginStart="8dp"
+        android:layout_toEndOf="@id/avatar"
+        android:background="@drawable/bg_chat_bubble_left"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <ImageView
+            android:id="@+id/voiceIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@mipmap/ic_voice_s1" />
 
         <TextView
-            android:id="@+id/nickName"
+            android:id="@+id/voiceDuration"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#999999"
-            android:textSize="12sp"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:id="@+id/voiceContainer"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_chat_bubble_left"
-            android:gravity="center_vertical"
-            android:minWidth="80dp"
-            android:paddingStart="16dp"
-            android:paddingTop="10dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="10dp">
-
-            <ImageView
-                android:id="@+id/voiceIcon"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@mipmap/ic_voice_s1" />
-
-            <TextView
-                android:id="@+id/voiceDuration"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text='0"'
-                android:textColor="#333333"
-                android:textSize="14sp" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <View
-                android:id="@+id/unreadDot"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_red_dot"
-                android:visibility="gone" />
-        </LinearLayout>
+            android:layout_marginStart="8dp"
+            android:text='0"'
+            android:textColor="#333333"
+            android:textSize="14sp" />
     </LinearLayout>
+
+    <View
+        android:id="@+id/unreadDot"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_alignTop="@id/voiceContainer"
+        android:layout_marginStart="4dp"
+        android:layout_toEndOf="@id/voiceContainer"
+        android:background="@drawable/bg_red_dot"
+        android:visibility="gone" />
 
     <io.openim.android.ouiconversation.widget.SendStateView
         android:id="@+id/sendState"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_alignTop="@id/voiceContainer"
         android:layout_marginStart="8dp"
+        android:layout_toEndOf="@id/voiceContainer"
         android:visibility="gone" />
-</LinearLayout>
+</RelativeLayout>
