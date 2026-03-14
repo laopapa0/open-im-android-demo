@@ -43,7 +43,12 @@ android {
 }
 
 dependencies {
-    api fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    // 移除 fileTree 中的 aar 引用，改为依赖包装模块
+    api fileTree(dir: 'libs', include: ['*.jar'])
+    
+    // 依赖包装模块
+    api project(':OUIEasyWindowLib')
+    
     //openIM sdk
     api "io.openim:core-sdk:${rootProject.ext.versions.android_sdk_core}"
     api "io.openim:android-sdk:${rootProject.ext.versions.android_sdk}"

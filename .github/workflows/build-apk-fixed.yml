@@ -28,12 +28,21 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # 将 AAR 文件从 OUIConversation 复制到 OUIRecordLib
+    # 将所有 AAR 文件复制到对应的包装模块
     - name: Setup AAR dependencies
       run: |
+        # OUIRecordLib - for OUIConversation
         mkdir -p OUIKit/OUIRecordLib/libs
         cp OUIKit/OUIConversation/libs/*.aar OUIKit/OUIRecordLib/libs/ 2>/dev/null || true
-        ls -la OUIKit/OUIRecordLib/libs/
+        
+        # OUIEasyWindowLib - for OUICore
+        mkdir -p OUIKit/OUIEasyWindowLib/libs
+        cp OUIKit/OUICore/libs/*.aar OUIKit/OUIEasyWindowLib/libs/ 2>/dev/null || true
+        
+        echo "=== OUIRecordLib/libs ==="
+        ls -la OUIKit/OUIRecordLib/libs/ 2>/dev/null || echo "Empty"
+        echo "=== OUIEasyWindowLib/libs ==="
+        ls -la OUIKit/OUIEasyWindowLib/libs/ 2>/dev/null || echo "Empty"
 
     - name: Grant execute permission for gradlew
       run: chmod +x Demo/gradlew
