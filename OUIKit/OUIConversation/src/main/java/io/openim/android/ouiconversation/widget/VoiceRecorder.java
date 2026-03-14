@@ -72,8 +72,8 @@ public class VoiceRecorder {
         }
         
         try {
-            // 创建录音文件
-            File voiceDir = new File(Constants.VOICE_DIR);
+            // 创建录音文件 - 使用 Constants.AUDIO_DIR
+            File voiceDir = new File(Constants.AUDIO_DIR);
             if (!voiceDir.exists()) {
                 voiceDir.mkdirs();
             }
