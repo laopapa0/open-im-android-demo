@@ -10,6 +10,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.text.Spannable;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -94,6 +95,8 @@ import io.reactivex.observers.DisposableObserver;
 import io.reactivex.plugins.RxJavaPlugins;
 
 public class MessageViewHolder {
+    private static final String TAG = "MessageViewHolder";
+    
     public static RecyclerView.ViewHolder createViewHolder(@NonNull ViewGroup parent,
                                                            int viewType) {
         if (viewType == Constants.LOADING) return new LoadingView(parent);
@@ -472,8 +475,14 @@ public class MessageViewHolder {
         private void bindVoiceData(View container, ImageView voiceIcon, TextView durationText, 
                                    View unreadDot, Message message, boolean isSelf) {
             SoundElem soundElem = message.getSoundElem();
-            if (soundElem == null) return;
-            if (container == null || voiceIcon == null || durationText == null) return;
+            if (soundElem == null) {
+                Log.w(TAG, "SoundElem is null");
+                return;
+            }
+            if (container == null || voiceIcon == null || durationText == null) {
+                Log.w(TAG, "Voice views are null");
+                return;
+            }
             
             // 设置时长显示 - getDuration() 返回 long，需要转换为 int
             long durationLong = soundElem.getDuration();
@@ -512,39 +521,53 @@ public class MessageViewHolder {
          */
         private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, android.content.Context context) {
             try {
+                Log.d(TAG, "playVoice called");
+                
                 SoundElem soundElem = message.getSoundElem();
                 if (soundElem == null) {
+                    Log.e(TAG, "SoundElem is null");
                     Toast.makeText(context, "语音数据为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 
                 // 获取语音URL - 优先使用本地路径，如果没有则使用网络URL
                 String voiceUrl = soundElem.getSourceUrl();
-                if (voiceUrl == null || voiceUrl.isEmpty()) {
-                    // 尝试获取本地路径
-                    voiceUrl = soundElem.getSoundPath();
+                String soundPath = soundElem.getSoundPath();
+                
+                Log.d(TAG, "SourceUrl: " + voiceUrl);
+                Log.d(TAG, "SoundPath: " + soundPath);
+                
+                // 优先使用本地路径
+                String finalPath = null;
+                if (soundPath != null && !soundPath.isEmpty()) {
+                    File localFile = new File(soundPath);
+                    if (localFile.exists()) {
+                        finalPath = soundPath;
+                        Log.d(TAG, "Using local file: " + soundPath);
+                    }
                 }
                 
-                if (voiceUrl == null || voiceUrl.isEmpty()) {
+                // 如果没有本地文件，尝试使用 URL
+                if (finalPath == null && voiceUrl != null && !voiceUrl.isEmpty()) {
+                    finalPath = voiceUrl;
+                    Log.d(TAG, "Using URL: " + voiceUrl);
+                }
+                
+                if (finalPath == null || finalPath.isEmpty()) {
+                    Log.e(TAG, "No valid voice path found");
                     Toast.makeText(context, "语音文件路径为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 
-                // 检查本地文件是否存在
-                if (voiceUrl.startsWith("/")) {
-                    File voiceFile = new File(voiceUrl);
-                    if (!voiceFile.exists()) {
-                        // 本地文件不存在，尝试使用URL下载
-                        Toast.makeText(context, "语音文件不存在，尝试下载...", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                }
-                
                 String msgId = message.getClientMsgID();
-                if (msgId == null) return;
+                if (msgId == null) {
+                    Log.e(TAG, "Message ID is null");
+                    return;
+                }
                 
                 // 如果正在播放当前语音，则停止
                 if (msgId.equals(currentPlayingMsgId)) {
+                    Log.d(TAG, "Stopping current playback");
                     SPlayer.instance().stop();
                     currentPlayingMsgId = null;
                     stopVoiceAnimation(voiceIcon);
@@ -552,6 +575,7 @@ public class MessageViewHolder {
                 }
                 
                 // 停止之前的播放
+                Log.d(TAG, "Stopping previous playback");
                 SPlayer.instance().stop();
                 currentPlayingMsgId = msgId;
                 
@@ -564,36 +588,38 @@ public class MessageViewHolder {
                 }
                 
                 // 播放语音
-                SPlayer.instance().playByUrl(voiceUrl, new PlayerListener() {
+                Log.d(TAG, "Starting playback: " + finalPath);
+                SPlayer.instance().playByUrl(finalPath, new PlayerListener() {
                     @Override
                     public void Loading(SMediaPlayer mediaPlayer, int i) {
-                        // 加载中
+                        Log.d(TAG, "Loading...");
                     }
 
                     @Override
                     public void LoadSuccess(SMediaPlayer mediaPlayer) {
+                        Log.d(TAG, "LoadSuccess, starting...");
                         mediaPlayer.start();
                     }
 
                     @Override
                     public void onCompletion(SMediaPlayer mediaPlayer) {
-                        // 播放完成
+                        Log.d(TAG, "Playback completed");
                         currentPlayingMsgId = null;
                         stopVoiceAnimation(voiceIcon);
                     }
 
                     @Override
                     public void onError(Exception e) {
-                        // 播放错误
+                        Log.e(TAG, "Playback error: " + (e != null ? e.getMessage() : "unknown"));
                         currentPlayingMsgId = null;
                         stopVoiceAnimation(voiceIcon);
                         if (context != null) {
-                            Toast.makeText(context, "播放失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Toast.makeText(context, "播放失败", Toast.LENGTH_SHORT).show();
                         }
                     }
                 });
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Exception in playVoice: " + e.getMessage(), e);
                 if (context != null) {
                     Toast.makeText(context, "播放异常: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
@@ -604,8 +630,6 @@ public class MessageViewHolder {
          * 开始语音播放动画
          */
         private void startVoiceAnimation(ImageView voiceIcon) {
-            // 这里可以使用帧动画或属性动画来实现音波动画
-            // 简化实现：使用透明度变化模拟
             voiceIcon.setAlpha(0.5f);
         }
         
