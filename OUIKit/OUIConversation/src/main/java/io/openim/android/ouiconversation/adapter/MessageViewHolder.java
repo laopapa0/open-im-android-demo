@@ -22,6 +22,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -33,6 +34,7 @@ import com.airbnb.lottie.LottieAnimationView;
 import com.alibaba.android.arouter.launcher.ARouter;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -397,7 +399,7 @@ public class MessageViewHolder {
 
         @Override
         protected void bindRight(View itemView, Message message) {
-            LayoutMsgImgRightBinding v = LayoutMsgImgRightBinding.bind(itemView);
+            LayoutMsgImgRightBinding v = LayoutImgRightBinding.bind(itemView);
             v.avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
             v.videoPlay2.setVisibility(View.GONE);
             v.mask2.setVisibility(View.GONE);
@@ -501,66 +503,101 @@ public class MessageViewHolder {
             
             // 点击播放语音
             container.setOnClickListener(v -> {
-                playVoice(message, voiceIcon, isSelf);
+                playVoice(message, voiceIcon, isSelf, container.getContext());
             });
         }
         
         /**
          * 播放语音
          */
-        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf) {
-            SoundElem soundElem = message.getSoundElem();
-            if (soundElem == null) return;
-            
-            String voiceUrl = soundElem.getSourceUrl();
-            String msgId = message.getClientMsgID();
-            
-            // 如果正在播放当前语音，则停止
-            if (msgId.equals(currentPlayingMsgId)) {
+        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, android.content.Context context) {
+            try {
+                SoundElem soundElem = message.getSoundElem();
+                if (soundElem == null) {
+                    Toast.makeText(context, "语音数据为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // 获取语音URL - 优先使用本地路径，如果没有则使用网络URL
+                String voiceUrl = soundElem.getSourceUrl();
+                if (voiceUrl == null || voiceUrl.isEmpty()) {
+                    // 尝试获取本地路径
+                    voiceUrl = soundElem.getSoundPath();
+                }
+                
+                if (voiceUrl == null || voiceUrl.isEmpty()) {
+                    Toast.makeText(context, "语音文件路径为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // 检查本地文件是否存在
+                if (voiceUrl.startsWith("/")) {
+                    File voiceFile = new File(voiceUrl);
+                    if (!voiceFile.exists()) {
+                        // 本地文件不存在，尝试使用URL下载
+                        Toast.makeText(context, "语音文件不存在，尝试下载...", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+                
+                String msgId = message.getClientMsgID();
+                if (msgId == null) return;
+                
+                // 如果正在播放当前语音，则停止
+                if (msgId.equals(currentPlayingMsgId)) {
+                    SPlayer.instance().stop();
+                    currentPlayingMsgId = null;
+                    stopVoiceAnimation(voiceIcon);
+                    return;
+                }
+                
+                // 停止之前的播放
                 SPlayer.instance().stop();
-                currentPlayingMsgId = null;
-                stopVoiceAnimation(voiceIcon);
-                return;
+                currentPlayingMsgId = msgId;
+                
+                // 开始播放动画
+                startVoiceAnimation(voiceIcon);
+                
+                // 标记已读
+                if (!isSelf && chatVM != null) {
+                    chatVM.markRead(message);
+                }
+                
+                // 播放语音
+                SPlayer.instance().playByUrl(voiceUrl, new PlayerListener() {
+                    @Override
+                    public void Loading(SMediaPlayer mediaPlayer, int i) {
+                        // 加载中
+                    }
+
+                    @Override
+                    public void LoadSuccess(SMediaPlayer mediaPlayer) {
+                        mediaPlayer.start();
+                    }
+
+                    @Override
+                    public void onCompletion(SMediaPlayer mediaPlayer) {
+                        // 播放完成
+                        currentPlayingMsgId = null;
+                        stopVoiceAnimation(voiceIcon);
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        // 播放错误
+                        currentPlayingMsgId = null;
+                        stopVoiceAnimation(voiceIcon);
+                        if (context != null) {
+                            Toast.makeText(context, "播放失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                if (context != null) {
+                    Toast.makeText(context, "播放异常: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
             }
-            
-            // 停止之前的播放
-            SPlayer.instance().stop();
-            currentPlayingMsgId = msgId;
-            
-            // 开始播放动画
-            startVoiceAnimation(voiceIcon);
-            
-            // 标记已读
-            if (!isSelf && chatVM != null) {
-                chatVM.markRead(message);
-            }
-            
-            // 播放语音
-            SPlayer.instance().playByUrl(voiceUrl, new PlayerListener() {
-                @Override
-                public void Loading(SMediaPlayer mediaPlayer, int i) {
-                    // 加载中
-                }
-
-                @Override
-                public void LoadSuccess(SMediaPlayer mediaPlayer) {
-                    mediaPlayer.start();
-                }
-
-                @Override
-                public void onCompletion(SMediaPlayer mediaPlayer) {
-                    // 播放完成
-                    currentPlayingMsgId = null;
-                    stopVoiceAnimation(voiceIcon);
-                }
-
-                @Override
-                public void onError(Exception e) {
-                    // 播放错误
-                    currentPlayingMsgId = null;
-                    stopVoiceAnimation(voiceIcon);
-                }
-            });
         }
         
         /**
