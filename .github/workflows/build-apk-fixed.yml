@@ -28,35 +28,13 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # 将所有 AAR 文件复制到对应的包装模块
-    - name: Setup AAR dependencies
-      run: |
-        # OUIRecordLib - for OUIConversation
-        mkdir -p OUIKit/OUIRecordLib/libs
-        cp OUIKit/OUIConversation/libs/*.aar OUIKit/OUIRecordLib/libs/ 2>/dev/null || true
-        
-        # OUIEasyWindowLib - for OUICore and OUICalling
-        mkdir -p OUIKit/OUIEasyWindowLib/libs
-        cp OUIKit/OUICore/libs/*.aar OUIKit/OUIEasyWindowLib/libs/ 2>/dev/null || true
-        
-        echo "=== OUIRecordLib/libs ==="
-        ls -la OUIKit/OUIRecordLib/libs/ 2>/dev/null || echo "Empty"
-        echo "=== OUIEasyWindowLib/libs ==="
-        ls -la OUIKit/OUIEasyWindowLib/libs/ 2>/dev/null || echo "Empty"
-
     - name: Grant execute permission for gradlew
       run: chmod +x Demo/gradlew
-
-    # 先构建包装模块，确保 AAR 被正确打包
-    - name: Build wrapper modules first
-      run: |
-        cd Demo
-        ./gradlew :OUIEasyWindowLib:assemble :OUIRecordLib:assemble --no-daemon --refresh-dependencies
 
     - name: Build Debug APK
       run: |
         cd Demo
-        ./gradlew assembleDebug --no-daemon --refresh-dependencies
+        ./gradlew assembleDebug --no-daemon
 
     - name: Build Release APK
       run: |

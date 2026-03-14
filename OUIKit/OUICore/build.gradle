@@ -43,11 +43,10 @@ android {
 }
 
 dependencies {
-    // 移除 fileTree 中的 aar 引用，改为依赖包装模块
     api fileTree(dir: 'libs', include: ['*.jar'])
     
-    // 依赖包装模块
-    api project(':OUIEasyWindowLib')
+    // 使用 flatDir 方式引用本地 AAR（注意：flatDir 不支持版本号，使用文件名）
+    api(name: 'EasyWindow-10.2', ext: 'aar')
     
     //openIM sdk
     api "io.openim:core-sdk:${rootProject.ext.versions.android_sdk_core}"

@@ -69,8 +69,6 @@ dependencies {
     implementation "androidx.activity:activity-ktx:1.4.0"
 
     implementation project(':OUICore')
-    // OUICalling 直接使用 EasyWindow，需要显式依赖
-    implementation project(':OUIEasyWindowLib')
     implementation 'com.alibaba:arouter-api:1.5.2'
     annotationProcessor 'com.alibaba:arouter-compiler:1.5.2'
 

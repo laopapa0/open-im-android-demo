@@ -20,6 +20,12 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // flatDir 必须在最前面，用于本地 AAR
+        flatDir {
+            dirs 'libs'
+            dirs '../OUIKit/OUICore/libs'
+            dirs '../OUIKit/OUIConversation/libs'
+        }
         mavenCentral()
         google()
         gradlePluginPortal()
@@ -42,10 +48,6 @@ include ':app'
 
 include ':OUICore'
 project(':OUICore').projectDir = new File(settingsDir, '../OUIKit/OUICore')
-include ':OUIEasyWindowLib'
-project(':OUIEasyWindowLib').projectDir = new File(settingsDir, '../OUIKit/OUIEasyWindowLib')
-include ':OUIRecordLib'
-project(':OUIRecordLib').projectDir = new File(settingsDir, '../OUIKit/OUIRecordLib')
 include ':OUIConversation'
 project(':OUIConversation').projectDir = new File(settingsDir, '../OUIKit/OUIConversation')
 include ':OUIGroup'
