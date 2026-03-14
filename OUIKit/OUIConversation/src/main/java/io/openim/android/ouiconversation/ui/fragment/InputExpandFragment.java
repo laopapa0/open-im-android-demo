@@ -3,6 +3,7 @@ package io.openim.android.ouiconversation.ui.fragment;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -13,8 +14,12 @@ import android.os.Bundle;
 
 import android.text.TextUtils;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -45,6 +50,7 @@ import io.openim.android.ouiconversation.databinding.ItemExpandMenuBinding;
 import io.openim.android.ouiconversation.ui.ChatActivity;
 import io.openim.android.ouiconversation.ui.ShootActivity;
 import io.openim.android.ouiconversation.vm.ChatVM;
+import io.openim.android.ouiconversation.widget.VoiceRecorder;
 import io.openim.android.ouicore.adapter.RecyclerViewAdapter;
 import io.openim.android.ouicore.base.BaseApp;
 import io.openim.android.ouicore.base.BaseFragment;
@@ -85,6 +91,15 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
     // permissions
     private HasPermissions hasStorage;
     private HasPermissions hasRecordAudio;
+    
+    // Voice recording
+    private VoiceRecorder voiceRecorder;
+    private Dialog voiceRecordDialog;
+    private TextView recordDurationText;
+    private Button btnRecord;
+    private boolean isRecording = false;
+    private String recordedFilePath;
+    private int recordedDuration;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -93,11 +108,53 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             hasStorage = new HasPermissions(getActivity(), Permission.MANAGE_EXTERNAL_STORAGE);
             hasRecordAudio = new HasPermissions(getActivity(), Permission.RECORD_AUDIO);
         });
+        voiceRecorder = new VoiceRecorder(getContext());
+        voiceRecorder.setRecordListener(new VoiceRecorder.RecordListener() {
+            @Override
+            public void onStart() {
+                isRecording = true;
+                updateRecordUI();
+            }
+
+            @Override
+            public void onProgress(int seconds) {
+                if (recordDurationText != null) {
+                    recordDurationText.setText(seconds + "\"");
+                }
+            }
+
+            @Override
+            public void onComplete(String filePath, int duration) {
+                isRecording = false;
+                recordedFilePath = filePath;
+                recordedDuration = duration;
+                updateRecordUI();
+                // 自动发送语音
+                sendVoiceMessage();
+                dismissVoiceDialog();
+            }
+
+            @Override
+            public void onError(String error) {
+                isRecording = false;
+                Toast.makeText(getContext(), error, Toast.LENGTH_SHORT).show();
+                dismissVoiceDialog();
+            }
+
+            @Override
+            public void onCancel() {
+                isRecording = false;
+                dismissVoiceDialog();
+            }
+        });
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        if (voiceRecorder != null) {
+            voiceRecorder.release();
+        }
     }
 
     @Nullable
@@ -139,26 +196,130 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
     }
 
     /**
-     * 开始语音录制
+     * 显示语音录制对话框
      */
     private void startVoiceRecording() {
         hasRecordAudio.safeGo(() -> {
-            // 显示录音对话框
-            CommonDialog dialog = new CommonDialog(getContext());
-            dialog.setTitle(getString(io.openim.android.ouicore.R.string.voice_recording));
-            dialog.setContent(getString(io.openim.android.ouicore.R.string.hold_to_record));
-            dialog.setNegativeButton(getString(io.openim.android.ouicore.R.string.cancel), v -> dialog.dismiss());
-            dialog.setPositiveButton(getString(io.openim.android.ouicore.R.string.send), v -> {
-                // 这里应该获取录制的音频路径
-                // 由于需要完整的录音实现，这里使用模拟数据
-                // 实际项目中应该集成 MediaRecorder 或 AudioRecorder
-                Toast.makeText(getContext(), 
-                    getString(io.openim.android.ouicore.R.string.voice_feature_tips), 
-                    Toast.LENGTH_LONG).show();
-                dialog.dismiss();
-            });
-            dialog.show();
+            showVoiceRecordDialog();
         });
+    }
+    
+    /**
+     * 显示录音对话框
+     */
+    private void showVoiceRecordDialog() {
+        if (getContext() == null) return;
+        
+        voiceRecordDialog = new Dialog(getContext());
+        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_voice_record, null);
+        voiceRecordDialog.setContentView(dialogView);
+        voiceRecordDialog.setCancelable(false);
+        
+        ImageView voiceIcon = dialogView.findViewById(R.id.voiceIcon);
+        recordDurationText = dialogView.findViewById(R.id.recordDuration);
+        TextView recordHint = dialogView.findViewById(R.id.recordHint);
+        Button btnCancel = dialogView.findViewById(R.id.btnCancel);
+        btnRecord = dialogView.findViewById(R.id.btnRecord);
+        Button btnSend = dialogView.findViewById(R.id.btnSend);
+        
+        // 取消按钮
+        btnCancel.setOnClickListener(v -> {
+            if (isRecording) {
+                voiceRecorder.cancelRecording();
+            }
+            dismissVoiceDialog();
+        });
+        
+        // 录音按钮 - 按住录音，松开停止
+        btnRecord.setOnTouchListener((v, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    // 开始录音
+                    voiceRecorder.startRecording();
+                    btnRecord.setBackgroundResource(R.drawable.bg_recording_button);
+                    btnRecord.setText("松开停止");
+                    return true;
+                    
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    // 停止录音
+                    if (isRecording) {
+                        voiceRecorder.stopRecording();
+                    }
+                    btnRecord.setBackgroundResource(R.drawable.bg_confirm_button);
+                    btnRecord.setText("按住录音");
+                    return true;
+            }
+            return false;
+        });
+        
+        // 发送按钮（用于手动发送，这里自动发送所以隐藏）
+        btnSend.setOnClickListener(v -> {
+            sendVoiceMessage();
+            dismissVoiceDialog();
+        });
+        
+        voiceRecordDialog.show();
+    }
+    
+    /**
+     * 更新录音 UI
+     */
+    private void updateRecordUI() {
+        if (voiceRecordDialog == null || !voiceRecordDialog.isShowing()) return;
+        
+        View dialogView = voiceRecordDialog.findViewById(android.R.id.content);
+        if (dialogView == null) return;
+        
+        TextView recordHint = dialogView.findViewById(R.id.recordHint);
+        Button btnSend = dialogView.findViewById(R.id.btnSend);
+        
+        if (isRecording) {
+            recordDurationText.setVisibility(View.VISIBLE);
+            recordHint.setText("正在录音...");
+            btnSend.setVisibility(View.GONE);
+        } else if (recordedFilePath != null) {
+            recordHint.setText("录音完成，时长: " + recordedDuration + "秒");
+            btnSend.setVisibility(View.VISIBLE);
+        }
+    }
+    
+    /**
+     * 关闭录音对话框
+     */
+    private void dismissVoiceDialog() {
+        if (voiceRecordDialog != null && voiceRecordDialog.isShowing()) {
+            voiceRecordDialog.dismiss();
+        }
+        voiceRecordDialog = null;
+        recordedFilePath = null;
+        recordedDuration = 0;
+    }
+    
+    /**
+     * 发送语音消息
+     */
+    private void sendVoiceMessage() {
+        if (recordedFilePath == null || recordedFilePath.isEmpty()) {
+            return;
+        }
+        
+        File voiceFile = new File(recordedFilePath);
+        if (!voiceFile.exists()) {
+            Toast.makeText(getContext(), "录音文件不存在", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // 使用 OpenIM SDK 创建语音消息
+        Message voiceMsg = OpenIMClient.getInstance().messageManager
+            .createVoiceMessageFromFullPath(recordedFilePath, recordedDuration);
+        
+        if (voiceMsg != null && vm != null) {
+            vm.sendMsg(voiceMsg);
+            Toast.makeText(getContext(), "语音发送成功", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(getContext(), "语音消息创建失败", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private final ActivityResultLauncher<Intent> captureLauncher =
