@@ -427,7 +427,7 @@ public class MessageViewHolder {
 
         @Override
         protected int getRightInflatedId() {
-            return R.layout.layout_msg_msg_voice_right;
+            return R.layout.layout_msg_voice_right;
         }
 
         @Override
