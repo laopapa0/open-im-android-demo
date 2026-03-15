@@ -72,7 +72,7 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
         Arrays.asList(
             R.mipmap.ic_c_photo,           // 0 - 相册
             R.mipmap.ic_c_file,            // 1 - 文件
-            R.mipmap.ic_tools_video_call   // 2 - 视频通话
+            R.mipmap.ic_c_call             // 2 - 视频通话
         );
     
     // 菜单标题列表
