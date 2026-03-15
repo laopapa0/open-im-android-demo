@@ -156,6 +156,13 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
     private final List<Message> mMsgList = new ArrayList<>();
     public final MutableLiveData<Boolean> mTypingState = new MutableLiveData<>(false);
     public final Runnable finishInputting = () -> mTypingState.postValue(false);
+    
+    // AI回复模式: "voice" - 语音回复, "text" - 文字回复
+    public static final String AI_MODE_VOICE = "voice";
+    public static final String AI_MODE_TEXT = "text";
+    public String aiReplyMode = AI_MODE_TEXT; // 默认文字模式
+    public State<String> aiReplyModeState = new State<>(AI_MODE_TEXT);
+    public static final String AI_COMMAND_PREFIX = "/ai_mode:";
 
     public void init() {
         loading = new Message();
@@ -171,6 +178,64 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
         } else {
             getGroupPermissions();
             IMEvent.getInstance().addGroupListener(this);
+        }
+    }
+    
+    /**
+     * 切换AI回复模式
+     * @return 切换后的模式 (voice 或 text)
+     */
+    public String switchAIReplyMode() {
+        String newMode = AI_MODE_VOICE.equals(aiReplyMode) ? AI_MODE_TEXT : AI_MODE_VOICE;
+        aiReplyMode = newMode;
+        aiReplyModeState.setValue(newMode);
+        
+        // 发送指令消息到服务器
+        sendAIModeCommand(newMode);
+        
+        return newMode;
+    }
+    
+    /**
+     * 发送AI模式切换指令
+     * 指令格式: /ai_mode:voice 或 /ai_mode:text
+     */
+    private void sendAIModeCommand(String mode) {
+        String command = AI_COMMAND_PREFIX + mode;
+        Message msg = OpenIMClient.getInstance().messageManager.createTextMessage(command);
+        if (msg != null) {
+            // 设置标记，表示这是AI指令消息，本地不显示
+            MsgExpand expand = new MsgExpand();
+            expand.aiCommand = true;
+            msg.setExt(expand);
+            
+            sendMsg(msg);
+        }
+    }
+    
+    /**
+     * 检查消息是否是AI指令消息
+     */
+    public boolean isAICommandMessage(Message msg) {
+        if (msg == null || msg.getContentType() != MessageType.TEXT) {
+            return false;
+        }
+        String content = msg.getTextElem().getContent();
+        return content != null && content.startsWith(AI_COMMAND_PREFIX);
+    }
+    
+    /**
+     * 根据AI指令更新本地模式状态
+     */
+    public void updateAIModeFromMessage(Message msg) {
+        if (!isAICommandMessage(msg)) {
+            return;
+        }
+        String content = msg.getTextElem().getContent();
+        String mode = content.substring(AI_COMMAND_PREFIX.length());
+        if (AI_MODE_VOICE.equals(mode) || AI_MODE_TEXT.equals(mode)) {
+            aiReplyMode = mode;
+            aiReplyModeState.setValue(mode);
         }
     }
 
@@ -664,6 +729,14 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
      */
     @Override
     public void onRecvNewMessage(Message msg) {
+        // 检查是否是AI指令消息
+        if (isAICommandMessage(msg)) {
+            // 更新本地AI模式状态
+            updateAIModeFromMessage(msg);
+            // AI指令消息不显示在聊天界面
+            return;
+        }
+        
         if (msg.getContentType() == 1701) {
             BurnAfterReadingNotification notification = GsonHel.fromJson(
                 msg.getNotificationElem().getDetail(), BurnAfterReadingNotification.class);
