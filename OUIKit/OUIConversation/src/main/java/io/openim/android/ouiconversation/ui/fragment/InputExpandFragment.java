@@ -61,44 +61,58 @@ import io.openim.android.ouicore.utils.Routes;
 import io.openim.android.sdk.OpenIMClient;
 import io.openim.android.sdk.models.Message;
 
+/**
+ * 输入框扩展菜单Fragment (+号菜单)
+ * 包含：相册、文件、视频通话
+ */
 public class InputExpandFragment extends BaseFragment<ChatVM> {
+    
+    // 菜单图标列表
     public static List<Integer> menuIcons =
         Arrays.asList(
-            io.openim.android.ouicore.R.mipmap.ic_chat_photo, 
-            io.openim.android.ouicore.R.mipmap.ic_voice_s1,
-            io.openim.android.ouicore.R.mipmap.ic_tools_video_call);
+            R.mipmap.ic_c_photo,           // 0 - 相册
+            R.mipmap.ic_c_file,            // 1 - 文件
+            R.mipmap.ic_tools_video_call   // 2 - 视频通话
+        );
+    
+    // 菜单标题列表
     public static List<String> menuTitles =
         Arrays.asList(
             BaseApp.inst().getString(io.openim.android.ouicore.R.string.album),
-            BaseApp.inst().getString(io.openim.android.ouicore.R.string.voice),
-            BaseApp.inst().getString(io.openim.android.ouicore.R.string.video_calls));
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.file),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.video_calls)
+        );
 
     FragmentInputExpandBinding v;
     private HasPermissions hasStorage;
-    private HasPermissions hasRecordAudio;
     
-    private VoiceRecorder voiceRecorder;
-    private Dialog voiceRecordDialog;
-    private TextView recordDurationText;
-    private boolean isRecording = false;
-    private String recordedFilePath;
-    private long recordedDuration;
+    // 文件选择器启动器
+    private ActivityResultLauncher<Intent> filePickerLauncher;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         MThreadTool.executorService.execute(() -> {
             hasStorage = new HasPermissions(getActivity(), Permission.MANAGE_EXTERNAL_STORAGE);
-            hasRecordAudio = new HasPermissions(getActivity(), Permission.RECORD_AUDIO);
         });
+        
+        // 初始化文件选择器
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) {
+                        sendFileMessage(uri);
+                    }
+                }
+            }
+        );
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (voiceRecorder != null) {
-            voiceRecorder.release();
-        }
     }
 
     @Nullable
@@ -123,12 +137,15 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                     holder.v.menu.setOnClickListener(v -> {
                         switch (position) {
                             case 0:
+                                // 相册
                                 showMediaPicker();
                                 break;
                             case 1:
-                                startVoiceRecording();
+                                // 文件
+                                showFilePicker();
                                 break;
                             case 2:
+                                // 视频通话
                                 goToCall();
                                 break;
                         }
@@ -139,123 +156,76 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
         adapter.setItems(menuIcons);
     }
 
-    private void startVoiceRecording() {
-        if (hasRecordAudio == null) {
+    /**
+     * 显示文件选择器
+     */
+    private void showFilePicker() {
+        if (hasStorage == null) {
             Toast.makeText(getContext(), "权限初始化中，请重试", Toast.LENGTH_SHORT).show();
             return;
         }
-        hasRecordAudio.safeGo(() -> {
-            showVoiceRecordDialog();
+        
+        hasStorage.safeGo(() -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            // 允许选择所有类型的文件
+            String[] mimeTypes = {
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-powerpoint",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "text/plain",
+                "application/zip",
+                "application/x-rar-compressed",
+                "image/*",
+                "video/*",
+                "audio/*"
+            };
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+            filePickerLauncher.launch(intent);
         });
     }
     
-    private void showVoiceRecordDialog() {
-        if (getContext() == null) return;
+    /**
+     * 发送文件消息
+     */
+    private void sendFileMessage(Uri uri) {
+        if (uri == null || getContext() == null) return;
         
-        if (voiceRecorder == null) {
-            voiceRecorder = new VoiceRecorder(getContext());
-            voiceRecorder.setRecordListener(new VoiceRecorder.RecordListener() {
-                @Override
-                public void onStart() {
-                    isRecording = true;
-                }
-
-                @Override
-                public void onProgress(int seconds) {
-                    if (recordDurationText != null) {
-                        recordDurationText.setText(seconds + "\"");
-                    }
-                }
-
-                @Override
-                public void onComplete(String filePath, long duration) {
-                    isRecording = false;
-                    recordedFilePath = filePath;
-                    recordedDuration = duration;
-                    sendVoiceMessage();
-                    dismissVoiceDialog();
-                }
-
-                @Override
-                public void onError(String error) {
-                    isRecording = false;
-                    Toast.makeText(getContext(), error, Toast.LENGTH_SHORT).show();
-                    dismissVoiceDialog();
-                }
-
-                @Override
-                public void onCancel() {
-                    isRecording = false;
-                    dismissVoiceDialog();
-                }
-            });
-        }
-        
-        voiceRecordDialog = new Dialog(getContext());
-        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_voice_record, null);
-        voiceRecordDialog.setContentView(dialogView);
-        voiceRecordDialog.setCancelable(false);
-        
-        recordDurationText = dialogView.findViewById(R.id.recordDuration);
-        TextView recordHint = dialogView.findViewById(R.id.recordHint);
-        Button btnCancel = dialogView.findViewById(R.id.btnCancel);
-        Button btnRecord = dialogView.findViewById(R.id.btnRecord);
-        
-        btnCancel.setOnClickListener(v -> {
-            if (isRecording) {
-                voiceRecorder.cancelRecording();
+        try {
+            // 获取文件路径
+            String filePath = GetFilePathFromUri.getFileAbsolutePath(getContext(), uri);
+            if (filePath == null || filePath.isEmpty()) {
+                Toast.makeText(getContext(), "无法获取文件路径", Toast.LENGTH_SHORT).show();
+                return;
             }
-            dismissVoiceDialog();
-        });
-        
-        btnRecord.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    voiceRecorder.startRecording();
-                    btnRecord.setBackgroundResource(R.drawable.bg_recording_button);
-                    btnRecord.setText("松开停止");
-                    return true;
-                    
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isRecording) {
-                        voiceRecorder.stopRecording();
-                    }
-                    btnRecord.setBackgroundResource(R.drawable.bg_confirm_button);
-                    btnRecord.setText("按住录音");
-                    return true;
+            
+            File file = new File(filePath);
+            if (!file.exists()) {
+                Toast.makeText(getContext(), "文件不存在", Toast.LENGTH_SHORT).show();
+                return;
             }
-            return false;
-        });
-        
-        voiceRecordDialog.show();
-    }
-    
-    private void dismissVoiceDialog() {
-        if (voiceRecordDialog != null && voiceRecordDialog.isShowing()) {
-            voiceRecordDialog.dismiss();
-        }
-        voiceRecordDialog = null;
-    }
-    
-    private void sendVoiceMessage() {
-        if (recordedFilePath == null || recordedFilePath.isEmpty()) {
-            return;
-        }
-        
-        File voiceFile = new File(recordedFilePath);
-        if (!voiceFile.exists()) {
-            Toast.makeText(getContext(), "录音文件不存在", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        // 使用 createSoundMessageFromFullPath API (OpenIM SDK 标准方法)
-        Message voiceMsg = OpenIMClient.getInstance().messageManager
-            .createSoundMessageFromFullPath(recordedFilePath, (int) recordedDuration);
-        
-        if (voiceMsg != null && vm != null) {
-            vm.sendMsg(voiceMsg);
-            Toast.makeText(getContext(), "语音发送成功", Toast.LENGTH_SHORT).show();
+            
+            // 获取文件名
+            String fileName = file.getName();
+            
+            // 创建文件消息 - 使用 OpenIM SDK
+            Message fileMsg = OpenIMClient.getInstance().messageManager
+                .createFileMessageFromFullPath(filePath, fileName);
+            
+            if (fileMsg != null && vm != null) {
+                vm.sendMsg(fileMsg);
+                Toast.makeText(getContext(), "文件发送成功", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(getContext(), "文件发送失败", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            L.e("Send file error: " + e.getMessage());
+            Toast.makeText(getContext(), "文件发送失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
