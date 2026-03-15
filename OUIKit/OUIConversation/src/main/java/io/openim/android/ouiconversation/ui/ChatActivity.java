@@ -460,15 +460,12 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
      */
     private void updateAIModeButtonIcon(String mode) {
         // 根据模式设置不同图标
-        // 语音模式显示语音图标，文字模式显示文字图标
-        // 如果没有新图标，暂时使用 ic_phone 作为语音模式，ic_c_file 作为文字模式
-        // 等用户上传 ic_ai_voice.png 和 ic_ai_text.png 后再替换
         if (ChatVM.AI_MODE_VOICE.equals(mode)) {
-            // 语音模式 - 使用电话图标作为临时语音图标
-            view.call.setImageResource(io.openim.android.ouicore.R.mipmap.ic_phone);
+            // 语音模式
+            view.call.setImageResource(io.openim.android.ouiconversation.R.mipmap.ic_ai_voice);
         } else {
-            // 文字模式 - 使用文件图标作为临时文字图标
-            view.call.setImageResource(io.openim.android.ouiconversation.R.mipmap.ic_c_file);
+            // 文字模式
+            view.call.setImageResource(io.openim.android.ouiconversation.R.mipmap.ic_ai_text);
         }
     }
 
