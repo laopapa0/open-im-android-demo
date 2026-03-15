@@ -24,6 +24,7 @@ import android.view.ViewTreeObserver;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -32,7 +33,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.util.Consumer;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -383,12 +383,28 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             }
         });
 
+        // AI回复模式切换按钮（原电话按钮）
         view.call.setOnClickListener(new OnDedrepClickListener() {
             @Override
             public void click(View v) {
-                if (vm.isSingleChat && callingService != null) {
-                    goToCall();
-                }
+                // 切换AI回复模式
+                String newMode = vm.switchAIReplyMode();
+                
+                // 显示提示
+                String tip = ChatVM.AI_MODE_VOICE.equals(newMode) 
+                    ? "已切换到AI语音回复模式" 
+                    : "已切换到AI文字回复模式";
+                Toast.makeText(ChatActivity.this, tip, Toast.LENGTH_SHORT).show();
+                
+                // 更新按钮图标（根据当前模式显示不同图标）
+                updateAIModeButtonIcon(newMode);
+            }
+        });
+        
+        // 监听AI模式变化，更新图标
+        vm.aiReplyModeState.observe(this, mode -> {
+            if (mode != null) {
+                updateAIModeButtonIcon(mode);
             }
         });
 
@@ -437,6 +453,23 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
                 }
             }
         });
+    }
+    
+    /**
+     * 更新AI模式按钮图标
+     */
+    private void updateAIModeButtonIcon(String mode) {
+        // 根据模式设置不同图标
+        // 语音模式显示语音图标，文字模式显示文字图标
+        // 如果没有新图标，暂时使用 ic_phone 作为语音模式，ic_c_file 作为文字模式
+        // 等用户上传 ic_ai_voice.png 和 ic_ai_text.png 后再替换
+        if (ChatVM.AI_MODE_VOICE.equals(mode)) {
+            // 语音模式 - 使用电话图标作为临时语音图标
+            view.call.setImageResource(io.openim.android.ouicore.R.mipmap.ic_phone);
+        } else {
+            // 文字模式 - 使用文件图标作为临时文字图标
+            view.call.setImageResource(io.openim.android.ouiconversation.R.mipmap.ic_c_file);
+        }
     }
 
     public void goToCall() {
