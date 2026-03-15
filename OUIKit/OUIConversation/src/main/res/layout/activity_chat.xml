@@ -100,7 +100,7 @@
                     android:layout_centerInParent="true"
                     android:layout_marginRight="10dp"
                     android:layout_toStartOf="@id/more"
-                    android:src="@mipmap/ic_phone"
+                    android:src="@mipmap/ic_ai_text"
                     android:visibility="@{ChatVM.isSingleChat?View.VISIBLE:View.GONE}" />
 
                 <ImageView
