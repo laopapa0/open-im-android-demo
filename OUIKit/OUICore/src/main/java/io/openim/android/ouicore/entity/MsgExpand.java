@@ -17,4 +17,6 @@ public class MsgExpand {
     public boolean isShowTime;
     //富文本
     public transient SpannableStringBuilder sequence;
+    // AI指令消息标记
+    public boolean aiCommand;
 }
