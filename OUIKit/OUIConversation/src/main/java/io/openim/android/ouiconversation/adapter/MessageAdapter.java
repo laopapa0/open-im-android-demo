@@ -26,6 +26,8 @@ public class MessageAdapter extends RecyclerView.Adapter {
 
     public void setMessages(List<Message> messages) {
         this.messages = messages;
+        // 更新语音播放器的消息列表引用，用于自动连播
+        MessageViewHolder.setCurrentMessageList(messages);
     }
 
     @Override
