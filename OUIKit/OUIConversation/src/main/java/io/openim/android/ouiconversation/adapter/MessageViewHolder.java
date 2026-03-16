@@ -625,20 +625,21 @@ public class MessageViewHolder {
             if (recyclerView == null) return;
             
             // 滚动到该消息位置
-            int position = -1;
+            int targetPosition = -1;
             for (int i = 0; i < currentMessageList.size(); i++) {
                 if (message.getClientMsgID().equals(currentMessageList.get(i).getClientMsgID())) {
-                    position = i;
+                    targetPosition = i;
                     break;
                 }
             }
             
-            if (position >= 0) {
-                recyclerView.smoothScrollToPosition(position);
+            if (targetPosition >= 0) {
+                final int finalPosition = targetPosition;
+                recyclerView.smoothScrollToPosition(finalPosition);
                 
                 // 延迟一下等待滚动完成，然后播放
                 recyclerView.postDelayed(() -> {
-                    RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+                    RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(finalPosition);
                     if (holder instanceof VOICEView) {
                         boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
                         ImageView voiceIcon;
