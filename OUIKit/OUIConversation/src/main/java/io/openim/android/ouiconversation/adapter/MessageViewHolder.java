@@ -99,12 +99,23 @@ import io.reactivex.plugins.RxJavaPlugins;
 public class MessageViewHolder {
     private static final String TAG = "MessageViewHolder";
     
+    // 语音自动播放相关
+    public static boolean autoPlayVoiceEnabled = true;  // 是否开启自动连播
+    private static List<Message> currentMessageList;    // 当前消息列表
+    
     public static RecyclerView.ViewHolder createViewHolder(@NonNull ViewGroup parent,
                                                            int viewType) {
         if (viewType == Constants.LOADING) return new LoadingView(parent);
         if (viewType == MessageType.PICTURE) return new IMGView(parent);
         if (viewType == MessageType.VOICE) return new VOICEView(parent);
         return new TXTView(parent);
+    }
+    
+    /**
+     * 设置当前消息列表，用于语音自动连播
+     */
+    public static void setCurrentMessageList(List<Message> messages) {
+        currentMessageList = messages;
     }
 
     public abstract static class MsgViewHolder extends RecyclerView.ViewHolder {
@@ -353,7 +364,7 @@ public class MessageViewHolder {
 
         @Override
         protected int getLeftInflatedId() {
-            return R.layout.layout_msg_img_left;
+            return R.layout.layout.layout_msg_img_left;
         }
 
         @Override
@@ -417,12 +428,13 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder - 使用系统 MediaPlayer 实现
+     * 语音消息 ViewHolder - 支持自动连续播放
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
         private static String currentPlayingMsgId = null;
         private static MediaPlayer mediaPlayer = null;
         private static ImageView currentVoiceIcon = null;
+        private static Message currentMessage = null;  // 当前播放的消息
         
         public VOICEView(ViewGroup itemView) {
             super(itemView);
@@ -552,6 +564,7 @@ public class MessageViewHolder {
                 // 使用系统 MediaPlayer
                 currentPlayingMsgId = msgId;
                 currentVoiceIcon = voiceIcon;
+                currentMessage = message;
                 startVoiceAnimation(voiceIcon);
                 
                 mediaPlayer = new MediaPlayer();
@@ -564,6 +577,10 @@ public class MessageViewHolder {
                 
                 mediaPlayer.setOnCompletionListener(mp -> {
                     stopPlayback();
+                    // 播放完成，自动播放下一条语音
+                    if (autoPlayVoiceEnabled) {
+                        playNextVoice(message);
+                    }
                 });
                 
                 mediaPlayer.setOnErrorListener((mp, what, extra) -> {
@@ -578,8 +595,76 @@ public class MessageViewHolder {
             }
         }
         
+        /**
+         * 播放下一条语音消息
+         */
+        private void playNextVoice(Message currentMsg) {
+            if (currentMessageList == null || recyclerView == null) return;
+            
+            // 找到当前消息在列表中的位置
+            int currentIndex = -1;
+            for (int i = 0; i < currentMessageList.size(); i++) {
+                if (currentMsg.getClientMsgID().equals(currentMessageList.get(i).getClientMsgID())) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            if (currentIndex < 0) return;
+            
+            // 查找下一条语音消息（向上查找，因为列表是倒序的）
+            for (int i = currentIndex + 1; i < currentMessageList.size(); i++) {
+                Message nextMsg = currentMessageList.get(i);
+                if (nextMsg.getContentType() == MessageType.VOICE) {
+                    // 找到下一条语音，自动播放
+                    autoPlayMessage(nextMsg);
+                    break;
+                }
+            }
+        }
+        
+        /**
+         * 自动播放指定消息
+         */
+        private void autoPlayMessage(Message message) {
+            if (recyclerView == null) return;
+            
+            // 滚动到该消息位置
+            int position = -1;
+            for (int i = 0; i < currentMessageList.size(); i++) {
+                if (message.getClientMsgID().equals(currentMessageList.get(i).getClientMsgID())) {
+                    position = i;
+                    break;
+                }
+            }
+            
+            if (position >= 0) {
+                recyclerView.smoothScrollToPosition(position);
+                
+                // 延迟一下等待滚动完成，然后播放
+                recyclerView.postDelayed(() -> {
+                    // 找到对应的 ViewHolder 并播放
+                    RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+                    if (holder instanceof VOICEView) {
+                        // 获取语音图标并播放
+                        boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
+                        ImageView voiceIcon;
+                        if (isSelf) {
+                            voiceIcon = holder.itemView.findViewById(R.id.voiceIcon2);
+                        } else {
+                            voiceIcon = holder.itemView.findViewById(R.id.voiceIcon);
+                        }
+                        if (voiceIcon != null) {
+                            playVoice(message, voiceIcon, isSelf);
+                        }
+                    }
+                }, 300);
+            }
+        }
+        
         private void stopPlayback() {
             currentPlayingMsgId = null;
+            currentMessage = null;
             if (currentVoiceIcon != null) {
                 stopVoiceAnimation(currentVoiceIcon);
                 currentVoiceIcon = null;
