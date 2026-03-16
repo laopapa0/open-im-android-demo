@@ -427,7 +427,7 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder - 支持自动连续播放未读语音（仿微信）
+     * 语音消息 ViewHolder - 支持自动连续播放（仿微信：只播紧邻的下一条语音）
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
         private static String currentPlayingMsgId = null;
@@ -571,8 +571,8 @@ public class MessageViewHolder {
                 
                 mediaPlayer.setOnCompletionListener(mp -> {
                     stopPlayback();
-                    // 播放完成，自动播放下一条未读语音（仿微信逻辑）
-                    playNextUnreadVoice(message);
+                    // 播放完成，自动播放下一条语音（只播紧邻的下一条，仿微信逻辑）
+                    playNextVoice(message);
                 });
                 
                 mediaPlayer.setOnErrorListener((mp, what, extra) -> {
@@ -588,9 +588,10 @@ public class MessageViewHolder {
         }
         
         /**
-         * 播放下一条未读语音消息（仿微信逻辑：只自动播放有红点的/未读的语音）
+         * 播放紧邻的下一条语音消息（仿微信逻辑）
+         * 注意：只检查紧邻的下一条，如果是语音就播放，不是就停止
          */
-        private void playNextUnreadVoice(Message currentMsg) {
+        private void playNextVoice(Message currentMsg) {
             if (currentMessageList == null || recyclerView == null) return;
             
             // 找到当前消息在列表中的位置
@@ -604,58 +605,45 @@ public class MessageViewHolder {
             
             if (currentIndex < 0) return;
             
-            // 向上查找下一条语音消息（因为列表是倒序的，新消息在下）
-            for (int i = currentIndex + 1; i < currentMessageList.size(); i++) {
-                Message nextMsg = currentMessageList.get(i);
+            // 只检查紧邻的下一条消息（索引+1，因为列表是倒序的，新消息在下）
+            int nextIndex = currentIndex + 1;
+            if (nextIndex < currentMessageList.size()) {
+                Message nextMsg = currentMessageList.get(nextIndex);
+                // 如果下一条是语音，就自动播放（不管是否已读）
                 if (nextMsg.getContentType() == MessageType.VOICE) {
-                    // 只自动播放未读的语音（有红点的）
-                    if (!nextMsg.isRead()) {
-                        autoPlayMessage(nextMsg);
-                    }
-                    // 找到下一条语音就停止，无论是否已读
-                    break;
+                    autoPlayMessage(nextMsg, nextIndex);
                 }
+                // 如果不是语音，就不做任何事（停止自动播放）
             }
         }
         
         /**
          * 自动播放指定消息
          */
-        private void autoPlayMessage(Message message) {
+        private void autoPlayMessage(Message message, int position) {
             if (recyclerView == null) return;
             
-            // 滚动到该消息位置
-            int targetPosition = -1;
-            for (int i = 0; i < currentMessageList.size(); i++) {
-                if (message.getClientMsgID().equals(currentMessageList.get(i).getClientMsgID())) {
-                    targetPosition = i;
-                    break;
-                }
-            }
+            final int finalPosition = position;
+            recyclerView.smoothScrollToPosition(finalPosition);
             
-            if (targetPosition >= 0) {
-                final int finalPosition = targetPosition;
-                recyclerView.smoothScrollToPosition(finalPosition);
-                
-                // 延迟一下等待滚动完成，然后播放
-                recyclerView.postDelayed(() -> {
-                    RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(finalPosition);
-                    if (holder instanceof VOICEView) {
-                        boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
-                        ImageView voiceIcon;
-                        View unreadDot = null;
-                        if (isSelf) {
-                            voiceIcon = holder.itemView.findViewById(R.id.voiceIcon2);
-                        } else {
-                            voiceIcon = holder.itemView.findViewById(R.id.voiceIcon);
-                            unreadDot = holder.itemView.findViewById(R.id.unreadDot);
-                        }
-                        if (voiceIcon != null) {
-                            playVoice(message, voiceIcon, isSelf, unreadDot);
-                        }
+            // 延迟一下等待滚动完成，然后播放
+            recyclerView.postDelayed(() -> {
+                RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(finalPosition);
+                if (holder instanceof VOICEView) {
+                    boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
+                    ImageView voiceIcon;
+                    View unreadDot = null;
+                    if (isSelf) {
+                        voiceIcon = holder.itemView.findViewById(R.id.voiceIcon2);
+                    } else {
+                        voiceIcon = holder.itemView.findViewById(R.id.voiceIcon);
+                        unreadDot = holder.itemView.findViewById(R.id.unreadDot);
                     }
-                }, 300);
-            }
+                    if (voiceIcon != null) {
+                        playVoice(message, voiceIcon, isSelf, unreadDot);
+                    }
+                }
+            }, 300);
         }
         
         private void stopPlayback() {
