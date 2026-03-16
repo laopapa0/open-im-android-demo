@@ -555,6 +555,14 @@ public class MessageViewHolder {
                     return;
                 }
                 
+                // 播放即已读：标记为已读并隐藏红点（只有自己发的才需要）
+                if (!isSelf && chatVM != null) {
+                    chatVM.markRead(message);
+                    if (unreadDot != null) {
+                        unreadDot.setVisibility(View.GONE);
+                    }
+                }
+                
                 // 使用系统 MediaPlayer
                 currentPlayingMsgId = msgId;
                 currentVoiceIcon = voiceIcon;
