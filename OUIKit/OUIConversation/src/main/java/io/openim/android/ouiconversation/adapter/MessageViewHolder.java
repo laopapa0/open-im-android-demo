@@ -368,7 +368,7 @@ public class MessageViewHolder {
 
         @Override
         protected int getRightInflatedId() {
-            return R.layout.layout_msg_msg_img_right;
+            return R.layout.layout_msg_img_right;
         }
 
         @Override
@@ -553,14 +553,6 @@ public class MessageViewHolder {
                 if (voicePath == null || voicePath.isEmpty()) {
                     Toast.makeText(voiceIcon.getContext(), "语音路径为空", Toast.LENGTH_SHORT).show();
                     return;
-                }
-                
-                // 标记已读（隐藏红点）
-                if (!isSelf && chatVM != null) {
-                    chatVM.markRead(message);
-                    if (unreadDot != null) {
-                        unreadDot.setVisibility(View.GONE);
-                    }
                 }
                 
                 // 使用系统 MediaPlayer
