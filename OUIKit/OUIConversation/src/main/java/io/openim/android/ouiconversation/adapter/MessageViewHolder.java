@@ -557,18 +557,13 @@ public class MessageViewHolder {
                 
                 // 播放即已读：标记为已读并隐藏红点（只有对方发的才需要）
                 if (!isSelf) {
-                    // 立即更新本地消息状态
-                    message.setIsRead(true);
+                    // 隐藏红点（原有逻辑已经处理红点消失，这里只做UI更新）
                     if (unreadDot != null) {
                         unreadDot.setVisibility(View.GONE);
                     }
                     // 通知服务器已读
                     if (chatVM != null) {
                         chatVM.markRead(message);
-                    }
-                    // 刷新当前项以更新UI
-                    if (messageAdapter != null && position >= 0) {
-                        messageAdapter.notifyItemChanged(position);
                     }
                 }
                 
