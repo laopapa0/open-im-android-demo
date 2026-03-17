@@ -101,7 +101,7 @@ public class MessageViewHolder {
     
     // 语音自动播放相关
     private static List<Message> currentMessageList;    // 当前消息列表
-    private static boolean shouldAutoPlayNext = false;  // 是否应该自动播放下一条
+    private static boolean isAutoPlaying = false;       // 标记是否正在自动播放连读
     
     public static RecyclerView.ViewHolder createViewHolder(@NonNull ViewGroup parent,
                                                            int viewType) {
@@ -428,13 +428,13 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder - 支持自动连续播放未读语音（仿微信）
+     * 语音消息 ViewHolder - 支持自动连续播放未读语音（仿微信：只连读一条）
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
         private static String currentPlayingMsgId = null;
         private static MediaPlayer mediaPlayer = null;
         private static ImageView currentVoiceIcon = null;
-        private static Message currentMessage = null;  // 当前播放的消息
+        private static Message currentMessage = null;
         
         public VOICEView(ViewGroup itemView) {
             super(itemView);
@@ -528,7 +528,11 @@ public class MessageViewHolder {
             });
         }
         
-        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, View unreadDot, int position) {
+        /**
+         * 用户点击播放语音（入口）
+         */
+        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, 
+                              View unreadDot, int position) {
             try {
                 String msgId = message.getClientMsgID();
                 if (msgId == null) return;
@@ -556,12 +560,11 @@ public class MessageViewHolder {
                     return;
                 }
                 
-                // 重置自动播放标志
-                shouldAutoPlayNext = false;
-                
                 // 判断当前语音是否有红点（未读）
                 boolean hasRedDot = !isSelf && !message.isRead();
                 
+                // 检查是否应该连读下一条（只在用户点击且有红点时检查）
+                boolean shouldAutoPlayNext = false;
                 if (hasRedDot) {
                     // 有红点，取消红点
                     if (unreadDot != null) {
@@ -572,30 +575,81 @@ public class MessageViewHolder {
                         chatVM.markRead(message);
                     }
                     
-                    // 查看下一条消息是否存在且是否有红点
-                    shouldAutoPlayNext = checkNextMessageHasRedDot(position);
-                    Log.d(TAG, "playVoice: current has red dot, shouldAutoPlayNext=" + shouldAutoPlayNext);
+                    // 检查下一条是否有红点，决定是否连读
+                    shouldAutoPlayNext = canAutoPlayNextVoice(position);
+                    Log.d(TAG, "playVoice: user click, hasRedDot=true, shouldAutoPlayNext=" + shouldAutoPlayNext);
+                } else {
+                    Log.d(TAG, "playVoice: user click, hasRedDot=false, no auto play");
                 }
                 
-                // 使用系统 MediaPlayer
-                currentPlayingMsgId = msgId;
-                currentVoiceIcon = voiceIcon;
-                currentMessage = message;
-                startVoiceAnimation(voiceIcon);
+                // 重置自动播放标志
+                isAutoPlaying = false;
                 
-                mediaPlayer = new MediaPlayer();
+                // 开始播放
+                startPlayback(message, voiceIcon, voicePath, position, shouldAutoPlayNext);
+                
+            } catch (Exception e) {
+                e.printStackTrace();
+                stopPlayback();
+                Toast.makeText(voiceIcon.getContext(), "播放失败", Toast.LENGTH_SHORT).show();
+            }
+        }
+        
+        /**
+         * 检查是否可以自动播放下一条语音
+         * 核心规则：
+         * 1. 当前语音必须有红点（未读）- 已由调用方保证
+         * 2. 下一条必须是连续的语音消息
+         * 3. 下一条也必须有红点
+         */
+        private boolean canAutoPlayNextVoice(int currentPosition) {
+            if (currentMessageList == null || recyclerView == null) {
+                return false;
+            }
+            
+            int nextPosition = currentPosition + 1;
+            if (nextPosition < 0 || nextPosition >= currentMessageList.size()) {
+                return false;  // 没有下一条
+            }
+            
+            Message nextMsg = currentMessageList.get(nextPosition);
+            
+            // 检查连续性：下一条必须是语音消息
+            if (nextMsg.getContentType() != MessageType.VOICE) {
+                Log.d(TAG, "canAutoPlayNextVoice: next is not voice, type=" + nextMsg.getContentType());
+                return false;  // 中间有其他类型消息，中断连读
+            }
+            
+            // 下一条必须有红点才会自动播放
+            boolean nextIsSelf = nextMsg.getSendID().equals(BaseApp.inst().loginCertificate.userID);
+            boolean nextHasRedDot = !nextIsSelf && !nextMsg.isRead();
+            Log.d(TAG, "canAutoPlayNextVoice: nextHasRedDot=" + nextHasRedDot);
+            return nextHasRedDot;
+        }
+        
+        /**
+         * 统一的播放启动方法
+         */
+        private void startPlayback(Message message, ImageView voiceIcon, String voicePath, 
+                                   int position, boolean shouldAutoPlayNext) {
+            currentPlayingMsgId = message.getClientMsgID();
+            currentVoiceIcon = voiceIcon;
+            currentMessage = message;
+            startVoiceAnimation(voiceIcon);
+            
+            mediaPlayer = new MediaPlayer();
+            try {
                 mediaPlayer.setDataSource(voicePath);
                 mediaPlayer.prepareAsync();
                 
-                mediaPlayer.setOnPreparedListener(mp -> {
-                    mp.start();
-                });
+                mediaPlayer.setOnPreparedListener(mp -> mp.start());
                 
                 mediaPlayer.setOnCompletionListener(mp -> {
                     stopPlayback();
                     // 播放完成，根据标志决定是否继续播放下一条
-                    if (shouldAutoPlayNext) {
-                        Log.d(TAG, "onCompletion: auto playing next voice");
+                    // 关键：只有用户点击触发的播放才允许连读，且只连读一条
+                    if (shouldAutoPlayNext && !isAutoPlaying) {
+                        Log.d(TAG, "onCompletion: auto playing next voice (one time only)");
                         playNextVoice(position);
                     } else {
                         Log.d(TAG, "onCompletion: stop auto play");
@@ -607,33 +661,54 @@ public class MessageViewHolder {
                     return true;
                 });
                 
-            } catch (Exception e) {
+            } catch (IOException e) {
                 e.printStackTrace();
                 stopPlayback();
-                Toast.makeText(voiceIcon.getContext(), "播放失败", Toast.LENGTH_SHORT).show();
             }
         }
         
         /**
-         * 检查下一条消息是否有红点（未读）
+         * 自动播放语音（连读时使用）- 只连读一条，不再触发后续连读
          */
-        private boolean checkNextMessageHasRedDot(int currentPosition) {
-            if (currentMessageList == null || recyclerView == null) {
-                return false;
+        private void autoPlayVoice(Message message, int position) {
+            try {
+                String msgId = message.getClientMsgID();
+                if (msgId == null) return;
+                
+                SoundElem soundElem = message.getSoundElem();
+                if (soundElem == null) return;
+                
+                String voicePath = soundElem.getSoundPath();
+                if (voicePath == null || voicePath.isEmpty()) {
+                    voicePath = soundElem.getSourceUrl();
+                }
+                if (voicePath == null || voicePath.isEmpty()) return;
+                
+                boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
+                
+                // 获取ViewHolder中的voiceIcon
+                RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(position);
+                if (!(holder instanceof VOICEView)) return;
+                
+                ImageView voiceIcon;
+                if (isSelf) {
+                    voiceIcon = holder.itemView.findViewById(R.id.voiceIcon2);
+                } else {
+                    voiceIcon = holder.itemView.findViewById(R.id.voiceIcon);
+                }
+                if (voiceIcon == null) return;
+                
+                // 自动播放的语音，不再检查下一条（只连读一条）
+                isAutoPlaying = true;
+                Log.d(TAG, "autoPlayVoice: auto playing, will stop after this (no chain)");
+                
+                // 开始播放（不传shouldAutoPlayNext，因为自动播放不连读）
+                startPlayback(message, voiceIcon, voicePath, position, false);
+                
+            } catch (Exception e) {
+                e.printStackTrace();
+                stopPlayback();
             }
-            
-            int nextPosition = currentPosition + 1;
-            if (nextPosition < 0 || nextPosition >= currentMessageList.size()) {
-                return false;
-            }
-            
-            Message nextMsg = currentMessageList.get(nextPosition);
-            // 下一条必须是语音且未读（有红点）
-            if (nextMsg.getContentType() == MessageType.VOICE && !nextMsg.isRead()) {
-                // 还必须不是自己的消息
-                return !nextMsg.getSendID().equals(BaseApp.inst().loginCertificate.userID);
-            }
-            return false;
         }
         
         /**
@@ -650,46 +725,22 @@ public class MessageViewHolder {
             }
             
             Message nextMsg = currentMessageList.get(nextPosition);
-            if (nextMsg.getContentType() == MessageType.VOICE) {
-                autoPlayMessage(nextMsg, nextPosition);
+            if (nextMsg.getContentType() != MessageType.VOICE) {
+                return;  // 不是语音，不播放
             }
-        }
-        
-        /**
-         * 自动播放指定消息
-         */
-        private void autoPlayMessage(Message message, int position) {
-            if (recyclerView == null) return;
             
-            Log.d(TAG, "autoPlayMessage: position=" + position);
+            // 滚动到下一条位置
+            recyclerView.smoothScrollToPosition(nextPosition);
             
-            final int finalPosition = position;
-            recyclerView.smoothScrollToPosition(finalPosition);
-            
-            // 延迟一下等待滚动完成，然后播放
+            // 延迟等待滚动完成，然后自动播放
             recyclerView.postDelayed(() -> {
-                RecyclerView.ViewHolder holder = recyclerView.findViewHolderForAdapterPosition(finalPosition);
-                if (holder instanceof VOICEView) {
-                    boolean isSelf = message.getSendID().equals(BaseApp.inst().loginCertificate.userID);
-                    ImageView voiceIcon;
-                    View unreadDot = null;
-                    if (isSelf) {
-                        voiceIcon = holder.itemView.findViewById(R.id.voiceIcon2);
-                    } else {
-                        voiceIcon = holder.itemView.findViewById(R.id.voiceIcon);
-                        unreadDot = holder.itemView.findViewById(R.id.unreadDot);
-                    }
-                    if (voiceIcon != null) {
-                        playVoice(message, voiceIcon, isSelf, unreadDot, finalPosition);
-                    }
-                }
+                autoPlayVoice(nextMsg, nextPosition);
             }, 300);
         }
         
         private void stopPlayback() {
             currentPlayingMsgId = null;
             currentMessage = null;
-            shouldAutoPlayNext = false;  // 重置标志
             if (currentVoiceIcon != null) {
                 stopVoiceAnimation(currentVoiceIcon);
                 currentVoiceIcon = null;
