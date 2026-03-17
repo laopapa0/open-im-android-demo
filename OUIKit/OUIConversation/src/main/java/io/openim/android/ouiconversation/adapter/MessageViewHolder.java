@@ -101,6 +101,7 @@ public class MessageViewHolder {
     
     // 语音自动播放相关
     private static List<Message> currentMessageList;    // 当前消息列表
+    private static boolean shouldAutoPlayNext = false;  // 是否应该自动播放下一条
     
     public static RecyclerView.ViewHolder createViewHolder(@NonNull ViewGroup parent,
                                                            int viewType) {
@@ -427,7 +428,7 @@ public class MessageViewHolder {
     }
 
     /**
-     * 语音消息 ViewHolder - 支持自动连续播放（仿微信：只播紧邻的下一条语音）
+     * 语音消息 ViewHolder - 支持自动连续播放未读语音（仿微信）
      */
     public static class VOICEView extends MessageViewHolder.MsgViewHolder {
         private static String currentPlayingMsgId = null;
@@ -555,9 +556,14 @@ public class MessageViewHolder {
                     return;
                 }
                 
-                // 播放即已读：标记为已读并隐藏红点（只有对方发的才需要）
-                if (!isSelf) {
-                    // 隐藏红点（原有逻辑已经处理红点消失，这里只做UI更新）
+                // 重置自动播放标志
+                shouldAutoPlayNext = false;
+                
+                // 判断当前语音是否有红点（未读）
+                boolean hasRedDot = !isSelf && !message.isRead();
+                
+                if (hasRedDot) {
+                    // 有红点，取消红点
                     if (unreadDot != null) {
                         unreadDot.setVisibility(View.GONE);
                     }
@@ -565,6 +571,10 @@ public class MessageViewHolder {
                     if (chatVM != null) {
                         chatVM.markRead(message);
                     }
+                    
+                    // 查看下一条消息是否存在且是否有红点
+                    shouldAutoPlayNext = checkNextMessageHasRedDot(position);
+                    Log.d(TAG, "playVoice: current has red dot, shouldAutoPlayNext=" + shouldAutoPlayNext);
                 }
                 
                 // 使用系统 MediaPlayer
@@ -583,8 +593,13 @@ public class MessageViewHolder {
                 
                 mediaPlayer.setOnCompletionListener(mp -> {
                     stopPlayback();
-                    // 播放完成，自动播放下一条语音（只播紧邻的下一条，仿微信逻辑）
-                    playNextVoice(message, position);
+                    // 播放完成，根据标志决定是否继续播放下一条
+                    if (shouldAutoPlayNext) {
+                        Log.d(TAG, "onCompletion: auto playing next voice");
+                        playNextVoice(position);
+                    } else {
+                        Log.d(TAG, "onCompletion: stop auto play");
+                    }
                 });
                 
                 mediaPlayer.setOnErrorListener((mp, what, extra) -> {
@@ -600,35 +615,43 @@ public class MessageViewHolder {
         }
         
         /**
-         * 播放紧邻的下一条语音消息（仿微信逻辑）
-         * 注意：只检查紧邻的下一条，如果是语音就播放，不是就停止
+         * 检查下一条消息是否有红点（未读）
          */
-        private void playNextVoice(Message currentMsg, int currentPosition) {
+        private boolean checkNextMessageHasRedDot(int currentPosition) {
             if (currentMessageList == null || recyclerView == null) {
-                Log.d(TAG, "playNextVoice: currentMessageList or recyclerView is null");
+                return false;
+            }
+            
+            int nextPosition = currentPosition + 1;
+            if (nextPosition < 0 || nextPosition >= currentMessageList.size()) {
+                return false;
+            }
+            
+            Message nextMsg = currentMessageList.get(nextPosition);
+            // 下一条必须是语音且未读（有红点）
+            if (nextMsg.getContentType() == MessageType.VOICE && !nextMsg.isRead()) {
+                // 还必须不是自己的消息
+                return !nextMsg.getSendID().equals(BaseApp.inst().loginCertificate.userID);
+            }
+            return false;
+        }
+        
+        /**
+         * 播放下一条语音消息
+         */
+        private void playNextVoice(int currentPosition) {
+            if (currentMessageList == null || recyclerView == null) {
                 return;
             }
             
-            Log.d(TAG, "playNextVoice: currentPosition=" + currentPosition + ", listSize=" + currentMessageList.size());
-            
-            // 使用RecyclerView的位置来确定下一条消息
-            // 在聊天列表中，position + 1 是视觉上在当前消息下方的消息（更新的消息）
             int nextPosition = currentPosition + 1;
-            
             if (nextPosition < 0 || nextPosition >= currentMessageList.size()) {
-                Log.d(TAG, "playNextVoice: nextPosition out of bounds: " + nextPosition);
                 return;
             }
             
             Message nextMsg = currentMessageList.get(nextPosition);
-            Log.d(TAG, "playNextVoice: nextMsg type=" + nextMsg.getContentType() + ", time=" + nextMsg.getSendTime());
-            
-            // 如果下一条是语音，就自动播放（不管是否已读）
             if (nextMsg.getContentType() == MessageType.VOICE) {
-                Log.d(TAG, "playNextVoice: auto playing next voice");
                 autoPlayMessage(nextMsg, nextPosition);
-            } else {
-                Log.d(TAG, "playNextVoice: next is not voice, stop");
             }
         }
         
@@ -666,6 +689,7 @@ public class MessageViewHolder {
         private void stopPlayback() {
             currentPlayingMsgId = null;
             currentMessage = null;
+            shouldAutoPlayNext = false;  // 重置标志
             if (currentVoiceIcon != null) {
                 stopVoiceAnimation(currentVoiceIcon);
                 currentVoiceIcon = null;
