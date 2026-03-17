@@ -523,11 +523,11 @@ public class MessageViewHolder {
             
             // 点击播放
             container.setOnClickListener(v -> {
-                playVoice(message, voiceIcon, isSelf, unreadDot);
+                playVoice(message, voiceIcon, isSelf, unreadDot, getBindingAdapterPosition());
             });
         }
         
-        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, View unreadDot) {
+        private void playVoice(Message message, ImageView voiceIcon, boolean isSelf, View unreadDot, int position) {
             try {
                 String msgId = message.getClientMsgID();
                 if (msgId == null) return;
@@ -555,11 +555,20 @@ public class MessageViewHolder {
                     return;
                 }
                 
-                // 播放即已读：标记为已读并隐藏红点（只有自己发的才需要）
-                if (!isSelf && chatVM != null) {
-                    chatVM.markRead(message);
+                // 播放即已读：标记为已读并隐藏红点（只有对方发的才需要）
+                if (!isSelf) {
+                    // 立即更新本地消息状态
+                    message.setIsRead(true);
                     if (unreadDot != null) {
                         unreadDot.setVisibility(View.GONE);
+                    }
+                    // 通知服务器已读
+                    if (chatVM != null) {
+                        chatVM.markRead(message);
+                    }
+                    // 刷新当前项以更新UI
+                    if (messageAdapter != null && position >= 0) {
+                        messageAdapter.notifyItemChanged(position);
                     }
                 }
                 
@@ -580,7 +589,7 @@ public class MessageViewHolder {
                 mediaPlayer.setOnCompletionListener(mp -> {
                     stopPlayback();
                     // 播放完成，自动播放下一条语音（只播紧邻的下一条，仿微信逻辑）
-                    playNextVoice(message);
+                    playNextVoice(message, position);
                 });
                 
                 mediaPlayer.setOnErrorListener((mp, what, extra) -> {
@@ -599,29 +608,32 @@ public class MessageViewHolder {
          * 播放紧邻的下一条语音消息（仿微信逻辑）
          * 注意：只检查紧邻的下一条，如果是语音就播放，不是就停止
          */
-        private void playNextVoice(Message currentMsg) {
-            if (currentMessageList == null || recyclerView == null) return;
-            
-            // 找到当前消息在列表中的位置
-            int currentIndex = -1;
-            for (int i = 0; i < currentMessageList.size(); i++) {
-                if (currentMsg.getClientMsgID().equals(currentMessageList.get(i).getClientMsgID())) {
-                    currentIndex = i;
-                    break;
-                }
+        private void playNextVoice(Message currentMsg, int currentPosition) {
+            if (currentMessageList == null || recyclerView == null) {
+                Log.d(TAG, "playNextVoice: currentMessageList or recyclerView is null");
+                return;
             }
             
-            if (currentIndex < 0) return;
+            Log.d(TAG, "playNextVoice: currentPosition=" + currentPosition + ", listSize=" + currentMessageList.size());
             
-            // 只检查紧邻的下一条消息（索引+1，因为列表是倒序的，新消息在下）
-            int nextIndex = currentIndex + 1;
-            if (nextIndex < currentMessageList.size()) {
-                Message nextMsg = currentMessageList.get(nextIndex);
-                // 如果下一条是语音，就自动播放（不管是否已读）
-                if (nextMsg.getContentType() == MessageType.VOICE) {
-                    autoPlayMessage(nextMsg, nextIndex);
-                }
-                // 如果不是语音，就不做任何事（停止自动播放）
+            // 使用RecyclerView的位置来确定下一条消息
+            // 在聊天列表中，position + 1 是视觉上在当前消息下方的消息（更新的消息）
+            int nextPosition = currentPosition + 1;
+            
+            if (nextPosition < 0 || nextPosition >= currentMessageList.size()) {
+                Log.d(TAG, "playNextVoice: nextPosition out of bounds: " + nextPosition);
+                return;
+            }
+            
+            Message nextMsg = currentMessageList.get(nextPosition);
+            Log.d(TAG, "playNextVoice: nextMsg type=" + nextMsg.getContentType() + ", time=" + nextMsg.getSendTime());
+            
+            // 如果下一条是语音，就自动播放（不管是否已读）
+            if (nextMsg.getContentType() == MessageType.VOICE) {
+                Log.d(TAG, "playNextVoice: auto playing next voice");
+                autoPlayMessage(nextMsg, nextPosition);
+            } else {
+                Log.d(TAG, "playNextVoice: next is not voice, stop");
             }
         }
         
@@ -630,6 +642,8 @@ public class MessageViewHolder {
          */
         private void autoPlayMessage(Message message, int position) {
             if (recyclerView == null) return;
+            
+            Log.d(TAG, "autoPlayMessage: position=" + position);
             
             final int finalPosition = position;
             recyclerView.smoothScrollToPosition(finalPosition);
@@ -648,7 +662,7 @@ public class MessageViewHolder {
                         unreadDot = holder.itemView.findViewById(R.id.unreadDot);
                     }
                     if (voiceIcon != null) {
-                        playVoice(message, voiceIcon, isSelf, unreadDot);
+                        playVoice(message, voiceIcon, isSelf, unreadDot, finalPosition);
                     }
                 }
             }, 300);
